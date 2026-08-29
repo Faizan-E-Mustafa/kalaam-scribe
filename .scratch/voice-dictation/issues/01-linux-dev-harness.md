@@ -22,5 +22,6 @@ Done when a `base.en` transcription of a short clean English clip succeeds local
   `hf-internal-testing` "Mary had a little lamb" sample; language en (p=1.00).
 - Model cached offline in `~/.cache/huggingface/hub/models--Systran--faster-whisper-base.en`.
 - Blocker: system Python 3.14 has no ctranslate2 wheel; worked around with uv-managed
-  Python 3.11 (documented in the harness README). This tells the phone setup (ticket 02)
-  to use a Python version with ctranslate2 wheels.
+  Python 3.11 (documented in the harness README). Note: this ctranslate2-on-pip
+  fragility is precisely why the phone (ticket 02) uses whisper.cpp instead of
+  faster-whisper (ADR 0002).

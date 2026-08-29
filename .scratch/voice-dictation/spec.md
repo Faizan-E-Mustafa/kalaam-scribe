@@ -33,8 +33,8 @@ the eventual product is a native keyboard (stretch goal).
 
 ## Implementation Decisions
 
-- Use **faster-whisper** (CTranslate2 backend) as the transcription engine, running on CPU only.
-- Phase 1 uses the **`base.en`** model in int8 quantization with voice-activity detection, chosen for the A50's CPU-only constraints. Other sizes (`small`, `tiny`) are compared in the benchmark ticket.
+- Use **whisper.cpp** (GGML/C++ port) as the on-phone transcription engine, running on CPU only — it builds natively in Termux without the ctranslate2 source-compile that faster-whisper requires (ADR 0002). The Linux validation harness keeps **faster-whisper**.
+- Phase 1 uses the **`base.en`** model in a quantized form with voice-activity detection, chosen for the A50's CPU-only constraints. Other sizes (`small`, `tiny`) are compared in the benchmark ticket.
 - Runtime target is the **phone only**; the Linux desktop is a development/validation harness only.
 - Recording uses **Termux:API** (`termux-microphone-record`); the transcript is written to the Android clipboard via `termux-clipboard-set` and signalled via `termux-notification`.
 - The interaction is: tap recorder widget → speak → tap/volume to stop → wait for local transcription → "Copied" notification → user long-press-pastes into WhatsApp → user sends manually.
@@ -59,5 +59,5 @@ the eventual product is a native keyboard (stretch goal).
 
 ## Further Notes
 
-- Primary risk: `faster-whisper`/`ctranslate2` wheels on the developer's Python 3.14 Linux environment may not exist yet; the linux-dev-harness ticket exists to catch this early, with fallback to the phone-side Termux Python or an older Python in a venv.
+- Primary risk: `faster-whisper`/`ctranslate2` wheels on the developer's Python 3.14 Linux environment may not exist (worked around in the linux-dev-harness ticket with uv-managed Python 3.11). On the phone, ctranslate2 has no aarch64 wheel, which is why the phone uses whisper.cpp (ADR 0002) instead of faster-whisper.
 - Secondary risk: A50 transcription speed; the benchmark ticket exists to de-risk and choose the model size.

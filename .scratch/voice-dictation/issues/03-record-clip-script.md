@@ -1,6 +1,6 @@
 # 03: Record-and-clip dictation script
 
-**What to build:** A single command (and home-screen widget shortcut) on the A50 that records the microphone via Termux:API, transcribes locally with faster-whisper `base.en`, writes the transcript to the Android clipboard, and shows a "Copied" notification. The user stops recording without typing (on-screen tap or volume button).
+**What to build:** A single command (and home-screen widget shortcut) on the A50 that records the microphone via Termux:API, transcribes locally with whisper.cpp `base.en` (`whisper-cli` on the GGML model), writes the transcript to the Android clipboard, and shows a "Copied" notification. The user stops recording without typing (on-screen tap or volume button).
 
 **Blocked by:** 02 (Termux environment on A50)
 
