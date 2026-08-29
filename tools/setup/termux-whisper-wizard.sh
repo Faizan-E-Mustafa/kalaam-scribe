@@ -198,11 +198,11 @@ banner "Termux + whisper.cpp on the Samsung A50"
 stage "Install F-Droid apps"
 say "You must install Termux from F-Droid, NOT the Play Store."
 open_url "https://f-droid.org/packages/com.termux/"
-step "Tap 'Download APK' (or add F-Droid first), install the `com.termux` APK."
+step "Tap 'Download APK' (or add F-Droid first), install the \`com.termux\` package."
 open_url "https://f-droid.org/packages/com.termux.api/"
-step "Install the `com.termux.api` (Termux:API) APK."
+step "Install the \`com.termux.api\` (Termux:API) APK."
 open_url "https://f-droid.org/packages/com.termux.widget/"
-step "Install the `com.termux.widget` (Termux:Widget) APK."
+step "Install the \`com.termux.widget\` (Termux:Widget) APK."
 pause "Installed all three apps from F-Droid?"
 
 # ---------------------------------------------------------------------------
@@ -210,7 +210,7 @@ pause "Installed all three apps from F-Droid?"
 # ---------------------------------------------------------------------------
 stage "Launch Termux and grant storage"
 say "Open the Termux app once and let it finish its first-time setup."
-step "On the phone: open Termux and wait for the `$` prompt."
+step "On the phone: open Termux and wait for the \`$\` prompt."
 step "Run:  termux-setup-storage   (grants shared-storage access)"
 pause "Termux is at a prompt and storage is granted?"
 
@@ -253,6 +253,10 @@ step "bash ./models/download-ggml-model.sh base.en"
 step "ls -lh models/ggml-base.en.bin"
 step "curl -L -o demo.wav https://huggingface.co/datasets/Narsil/asr_dummy/resolve/main/1.wav"
 ask MODEL_FILE "Paste the path of ggml-base.en.bin (e.g. models/ggml-base.en.bin):"
+while [[ -z "$MODEL_FILE" ]]; do
+  warn "Need the model path to continue."
+  ask MODEL_FILE "Paste the path of ggml-base.en.bin (e.g. models/ggml-base.en.bin):"
+done
 write_env WHISPER_MODEL "$MODEL_FILE"
 
 # ---------------------------------------------------------------------------
