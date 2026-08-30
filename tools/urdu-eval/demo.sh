@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Interactive live-voice demo: record one clip, transcribe with all 4 Urdu
 # models (-l ur), and write the results to a UTF-8 HTML report that renders
-# Urdu script correctly in a browser.
+# Urdu script correctly in a browser. Each row shows f16 and q4_0 outputs with
+# per-model wall time and RTF.
 #
 # Run in your own terminal. After each recording the report opens in your
 # default browser so you can visually check the Urdu output. Loop repeats.
@@ -30,7 +31,24 @@ MODELS_Q["multilingual (openai)"]="$MEDIA_DIR/oai_small/ggml-model-q4_0.bin"
 
 transcribe() {
   local model="$1"
-  "$WHISPER_CLI" -m "$model" -f "$CLIP" -l ur -nt 2>/dev/null | sed '/^[[:space:]]*$/d'
+  local start end dt text
+  start=$(date +%s.%N)
+  text=$("$WHISPER_CLI" -m "$model" -f "$CLIP" -l ur -nt 2>/dev/null | sed '/^[[:space:]]*$/d')
+  end=$(date +%s.%N)
+  dt=$(awk "BEGIN{printf \"%.2f\", $end-$start}")
+  printf '%s|||%ss' "$text" "$dt"
+}
+
+render_row() {
+  local tag="$1" model="$2"
+  local out
+  out=$(transcribe "$model")
+  local text dt
+  text="${out%%|||*}"
+  dt="${out##*|||}"
+  local rtf
+  rtf=$(awk -v w="${dt%s}" -v d="$DUR" 'BEGIN{ if (d>0) printf "RTF %.2f", w/d; else print "RTF --" }')
+  echo "<div class='box'><span class='tag'>${tag} (${dt}, ${rtf}) :</span>&nbsp; ${text}</div>"
 }
 
 open_report() {
@@ -76,9 +94,9 @@ while true; do
     for label in "${!MODELS[@]}"; do
       model=${MODELS[$label]}
       echo "<h2>${label}</h2>"
-      echo "<div class='box'><span class='tag'>f16  :</span>&nbsp; $(transcribe "$model")</div>"
+      render_row "f16" "$model"
       if [ -f "${MODELS_Q[$label]}" ]; then
-        echo "<div class='box'><span class='tag'>q4_0 :</span>&nbsp; $(transcribe "${MODELS_Q[$label]}")</div>"
+        render_row "q4_0" "${MODELS_Q[$label]}"
       fi
     done
 
