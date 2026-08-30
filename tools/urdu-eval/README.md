@@ -42,6 +42,23 @@ A50.
 Converted f16 GGML models and clips live under `URDU_EVAL_DIR`
 (default `/var/tmp/urdu-eval`), not in this repo (gitignored).
 
+## Benchmark timing (dev machine, same 3.9 s clip, `-l ur`, whisper-cli)
+
+Measured on the Linux dev machine (8-core, CPU-only). RTF < 1 means faster than
+real-time. The A50 (Exynos 9610, CPU-only) will be proportionally slower.
+
+| Model                  | size  | f16 wall | f16 RTF | q4_0 wall | q4_0 RTF |
+|------------------------|-------|----------|---------|-----------|----------|
+| base (kingabzpro)      | 46 MB | 3.62 s   | 0.93x   | **1.50 s**| **0.38x**|
+| small (Qasim)          | 145 MB| 9.04 s   | 2.32x   | 4.55 s    | 1.17x    |
+| hybrid (sny)           | 145 MB| 7.36 s   | 1.89x   | 4.57 s    | 1.17x    |
+| multilingual (openai)  | 145 MB| 7.43 s   | 1.91x   | 3.80 s    | 0.97x    |
+
+- q4_0 is roughly **1.6–2.4x faster** than f16 across all models.
+- **base q4_0 is fastest** (RTF 0.38x) but has the worst accuracy (WER 39.1%).
+- The three smalls at q4_0 all land around real-time (RTF ~1.0–1.17x) on this
+  machine; expect notably worse on the A50.
+
 ## Usage
 
 ```
