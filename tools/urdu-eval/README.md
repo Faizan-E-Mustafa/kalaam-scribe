@@ -12,6 +12,15 @@ A50.
   correctly in a browser (terminal fonts can't shape Arabic script). Repeats
   until you type `q`, or opens the report each time.
 - `record_clip.sh` — one-off helper that records a single clip to a given WAV.
+- `fetch_and_convert.sh` — download a HF Whisper fine-tune and convert it to
+  GGML f16. Resolves the LFS `model.safetensors`, verifies its integrity
+  (truncated downloads otherwise fail conversion silently later), writes
+  `vocab.json`/`added_tokens.json` from `tokenizer.json` when missing, then runs
+  the converter. `--verify-only` skips conversion.
+
+  ```
+  ./fetch_and_convert.sh Qasimhassan65/whisper-small-urdu small_Qasim
+  ```
 
 ## Requirements
 
