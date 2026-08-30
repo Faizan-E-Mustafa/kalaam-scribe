@@ -39,7 +39,7 @@ the eventual product is a native keyboard (stretch goal).
 - Recording uses **Termux:API** (`termux-microphone-record`); the transcript is written to the Android clipboard via `termux-clipboard-set` and signalled via `termux-notification`.
 - The interaction is: tap recorder widget → speak → tap/volume to stop → wait for local transcription → "Copied" notification → user long-press-pastes into WhatsApp → user sends manually.
 - **Manual send only.** No auto-Enter/automessaging in Phase 1.
-- **Phase 2 (stretch goal):** a native Android IME keyboard app that inserts text directly into the focused field (no paste), reusing the validated model. Not specced/ticketed now.
+- **Phase 2 (stretch goal):** a native Android IME keyboard app that inserts text directly into the focused field (no paste), reusing the validated model. Not specced/ticketed now. The native app is where **hold-to-record** (press = record, release = stop) belongs — Termux:Widget cannot distinguish press-hold from release, so the Phase 1 Termux prototype uses tap-to-start / tap-Stop instead. The native app is also **required for a reliable launch surface**: on Android (esp. the A50's 4GB RAM) the Termux widget only fires while the Termux process is alive and is killed in the background, so Phase 2 needs a foreground service / proper IME to start recording reliably from the home screen.
 - **Multilingual support** is deferred; Phase 1 is English-only.
 
 ## Testing Decisions

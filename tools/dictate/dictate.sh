@@ -17,9 +17,13 @@
 
 set -euo pipefail
 
+# Widget/notification actions run in a minimal env; ensure Termux tools are found.
 PREFIX="/data/data/com.termux/files/usr"
+export PATH="${PREFIX}/bin:$PATH"
+export HOME="${HOME:-${PREFIX}/home}"
+
 BIN="${PREFIX}/bin"
-HOME_DIR="${HOME:-${PREFIX}/home}"
+HOME_DIR="${HOME}"
 
 # ---- paths (adjust if your install differs) --------------------------------
 WHISPER_CLI="${WHISPER_CLI:-${HOME_DIR}/whisper.cpp/build/bin/whisper-cli}"

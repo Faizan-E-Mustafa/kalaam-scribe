@@ -4,16 +4,16 @@
 
 **Blocked by:** 02 (Termux environment on A50)
 
-**Status:** ready-for-agent (in progress; file-transcription path verified on A50)
+**Status:** done (mic flow + clipboard + notify verified on A50; widget = partial, see finding)
 
-- [ ] Command records mic via termux-microphone-record with a hands-free stop
-- [x] Recording/content is transcribed locally with `base.en` (file path verified on A50)
+- [x] Command records mic via termux-microphone-record with a hands-free stop
+- [x] Recording/content is transcribed locally with `base.en` (file + mic paths verified on A50)
 - [x] Transcript is written to the clipboard via termux-clipboard-set (verified)
 - [x] A termux-notification tells the user it's ready to paste (verified)
-- [ ] A home-screen widget/tile launches the flow in one tap
+- [x] A home-screen widget/tile launches the flow in one tap (works while Termux open; see finding)
 
 ## Acceptance criteria notes
-Done when a spoken English test phrase ends up on the A50 clipboard as text.
+Done when a spoken English test phrase ends up on the A50 clipboard as text. Achieved.
 
 ## Delivered
 - `tools/dictate/dictate.sh` — Bash script for Termux:
@@ -23,4 +23,13 @@ Done when a spoken English test phrase ends up on the A50 clipboard as text.
     writes transcript to clipboard via `termux-clipboard-set`, shows high-priority "Copied"
     notification.
   - `dictate <file>` — transcribe an existing audio file to the clipboard (for testing).
-- On-phone steps to verify + widget setup are given to the user (below).
+- `tools/dictate/shortcuts/dictate-start.sh` — Termux:Widget one-tap launcher.
+- On-phone steps to verify + widget setup are given to the user.
+
+## Finding (rough edge, feeds Phase 2)
+The Termux:Widget shortcut **only fires while the Termux app process is alive**; Android
+(esp. the A50's 4GB RAM) kills Termux in the background so a home-screen tap fails when the
+app is closed. Workaround for the prototype: launch `dictate start` from within an open Termux
+session. This strengthens the case that the Phase 2 native app (foreground service / IME) is
+required, not just nice-to-have. Also, Termux:Widget cannot do hold-to-record; that too is a
+Phase 2 native-app feature.
