@@ -10,7 +10,8 @@ A50.
   press Enter again to stop, then it transcribes that one clip with every model
   under `-l ur` and writes the results to a UTF-8 HTML report that renders Urdu
   correctly in a browser (terminal fonts can't shape Arabic script). Repeats
-  until you type `q`, or opens the report each time.
+  until you type `q`, or opens the report each time. Shows **both f16 and q4_0**
+  outputs side by side when the quantized model file exists.
 - `record_clip.sh` — one-off helper that records a single clip to a given WAV.
 - `fetch_and_convert.sh` — download a HF Whisper fine-tune and convert it to
   GGML f16. Resolves the LFS `model.safetensors`, verifies its integrity

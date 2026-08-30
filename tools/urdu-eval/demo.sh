@@ -18,10 +18,15 @@ CLIP="$OUT_DIR/live_demo.wav"
 MEDIA_DIR="${URDU_EVAL_DIR:-/var/tmp/urdu-eval}/out"
 
 declare -A MODELS
+declare -A MODELS_Q
 MODELS["base (kingabzpro)"]="$MEDIA_DIR/base_king/ggml-model.bin"
 MODELS["small (Qasim)"]="$MEDIA_DIR/small_Qasim/ggml-model.bin"
 MODELS["hybrid (sny)"]="$MEDIA_DIR/hybrid_sny/ggml-model.bin"
 MODELS["multilingual (openai)"]="$MEDIA_DIR/oai_small/ggml-model.bin"
+MODELS_Q["base (kingabzpro)"]="$MEDIA_DIR/base_king/ggml-model-q4_0.bin"
+MODELS_Q["small (Qasim)"]="$MEDIA_DIR/small_Qasim/ggml-model-q4_0.bin"
+MODELS_Q["hybrid (sny)"]="$MEDIA_DIR/hybrid_sny/ggml-model-q4_0.bin"
+MODELS_Q["multilingual (openai)"]="$MEDIA_DIR/oai_small/ggml-model-q4_0.bin"
 
 transcribe() {
   local model="$1"
@@ -71,7 +76,10 @@ while true; do
     for label in "${!MODELS[@]}"; do
       model=${MODELS[$label]}
       echo "<h2>${label}</h2>"
-      echo "<div class='box'><span class='tag'>-l ur :</span>&nbsp; $(transcribe "$model")</div>"
+      echo "<div class='box'><span class='tag'>f16  :</span>&nbsp; $(transcribe "$model")</div>"
+      if [ -f "${MODELS_Q[$label]}" ]; then
+        echo "<div class='box'><span class='tag'>q4_0 :</span>&nbsp; $(transcribe "${MODELS_Q[$label]}")</div>"
+      fi
     done
 
     echo '</body></html>'
