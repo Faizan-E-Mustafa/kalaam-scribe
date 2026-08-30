@@ -1,0 +1,5 @@
+# Converted GGML models — large, not committed.
+*.bin
+# Voice recordings and generated reports/clips.
+clips/
+report_*.html
