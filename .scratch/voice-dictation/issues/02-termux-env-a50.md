@@ -6,10 +6,17 @@
 
 **Status:** ready-for-agent
 
-- [ ] Termux + Termux:API + Termux:Widget installed from F-Droid on the A50
-- [ ] Build tools + ffmpeg installed; whisper.cpp built with `GGML_NO_OPENMP=ON` (stable on Android)
-- [ ] `base.en` GGML model downloaded and cached on the phone (usable offline)
-- [ ] Microphone permission granted to Termux
+- [x] Termux + Termux:API + Termux:Widget installed from F-Droid on the A50
+- [x] Build tools + ffmpeg installed; whisper.cpp built with `GGML_NO_OPENMP=ON` (stable on Android)
+- [x] `base.en` GGML model downloaded and cached on the phone (usable offline)
+- [x] Microphone permission granted to Termux
 
 ## Acceptance criteria notes
 Done when Termux can run `whisper-cli` with `ggml-base.en.bin` on the A50 without internet.
+
+## Outcome (implemented)
+- Termux, Termux:API, Termux:Widget installed from F-Droid.
+- Packages installed: git, cmake, clang, make, ffmpeg, curl, termux-api.
+- whisper.cpp cloned and built natively with `GGML_NO_OPENMP=ON`; `whisper-cli` present at `./build/bin/whisper-cli`.
+- `ggml-base.en.bin` downloaded; transcription verified working offline on the A50.
+- Mic permission granted to Termux:API (Termux itself has no mic entry — expected; recording delegates to the API app).
