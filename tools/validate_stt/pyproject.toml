@@ -4,7 +4,12 @@ version = "0.1.0"
 description = "Dev/validation harness for local dictation (faster-whisper, base.en)"
 requires-python = ">=3.11,<3.14"
 dependencies = [
+    "av>=18.1.0",
     "faster-whisper>=1.2.1",
+    "librosa>=0.11.0",
+    "soundfile>=0.14.0",
+    "torch>=2.13.0",
+    "transformers>=5.16.1",
 ]
 
 [tool.uv]

@@ -1,0 +1,4 @@
+# Large converted model — do not commit (251 MB).
+ggml-model-*.bin
+# User voice recordings and converted clips.
+samples/

@@ -27,7 +27,9 @@ HOME_DIR="${HOME}"
 
 # ---- paths (adjust if your install differs) --------------------------------
 WHISPER_CLI="${WHISPER_CLI:-${HOME_DIR}/whisper.cpp/build/bin/whisper-cli}"
-MODEL="${MODEL:-${HOME_DIR}/whisper.cpp/models/ggml-base.en.bin}" # multilingual: use ggml-<size>.bin (no .en) and drop -l en below
+# Roman-Urdu fine-tune (small, q8_0): valid English dictation, clean Roman script
+# with -l auto. Switch back to ggml-base.en.bin + "-l en" for English-only.
+MODEL="${MODEL:-${HOME_DIR}/whisper.cpp/models/ggml-model-q8_0.bin}"
 WORK="${WORK:-/data/data/com.termux/files/usr/tmp/dictate}"
 RAW_WAV="${WORK}/raw.wav"     # recorded by Termux:API (m4a/aac)
 WORK_WAV="${WORK}/clip.wav"   # 16 kHz mono for whisper
@@ -55,8 +57,9 @@ transcribe_to_clipboard() {
   # whisper.cpp wants 16 kHz mono PCM; Termux:API gives us an .m4a/.aac.
   ffmpeg -y -loglevel error -i "$src" -ar 16000 -ac 1 -c:a pcm_s16le "$WORK_WAV"
 
-  # whisper-cli: keep -l en for English-only models; drop -l en for multilingual auto-detect.
-  "$WHISPER_CLI" -m "$MODEL" -f "$WORK_WAV" -l en -nt >"$OUT_TXT" 2>>"$LOG"
+  # whisper-cli: -l auto gives clean Roman Urdu on the fine-tune (forcing -l ur
+  # leaks Urdu script). For English-only models use -l en.
+  "$WHISPER_CLI" -m "$MODEL" -f "$WORK_WAV" -l auto -nt >"$OUT_TXT" 2>>"$LOG"
   local text
   text="$(sed -e 's/^\[[^]]*\] *//' "$OUT_TXT" | tr '\n' ' ' | sed -e 's/  */ /g' -e 's/^ //' -e 's/ $//')"
 
