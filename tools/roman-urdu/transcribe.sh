@@ -13,7 +13,8 @@
 
 set -euo pipefail
 
-MODEL="${RU_MODEL:-$(pwd)/ggml-model-q8_0.bin}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MODEL="${RU_MODEL:-${SCRIPT_DIR}/ggml-model-q4_0.bin}"
 
 WHISPER_CLI="${WHISPER_CLI:-/tmp/opencode/whisper-bin-ubuntu-x64/whisper-cli}"
 TORCH_LIB="/home/femustafa/projects/learning_ws/tools/validate_stt/.venv/lib/python3.11/site-packages/torch/lib"

@@ -3,17 +3,17 @@
 Validated dev-machine artifacts are staged on Windows at:
 
     C:\Users\femustafa\Downloads\dictate-deploy\
-        ggml-model-q8_0.bin   (251 MB, small q8_0 Roman-Urdu model)
+        ggml-model-q4_0.bin   (139 MB, small q4_0 Roman-Urdu model)
         dictate.sh            (updated: MODEL + -l auto)
 
 ## 1. Get the files onto the phone
 
 Two files go onto the A50. Use any route you like (file manager, cloud
-upload + phone download, email, etc.). The model is 251 MB.
+upload + phone download, email, etc.). The model is 139 MB.
 
 Target locations on the A50:
 
-- Model:   `~/whisper.cpp/models/ggml-model-q8_0.bin`
+- Model:   `~/whisper.cpp/models/ggml-model-q4_0.bin`
 - Script:  `$PREFIX/bin/dictate`  (overwrite the existing one)
 
 The `dictate.sh` already self-sets `PATH`/`HOME`, so you can move it into
@@ -26,15 +26,15 @@ On the A50, after you've landed the files somewhere in shared storage
 (e.g. `~/storage/downloads/dictate-deploy/`):
 
     termux-setup-storage        # grant storage access once
-    cp ~/storage/downloads/dictate-deploy/ggml-model-q8_0.bin ~/whisper.cpp/models/
+    cp ~/storage/downloads/dictate-deploy/ggml-model-q4_0.bin ~/whisper.cpp/models/
     cp ~/storage/downloads/dictate-deploy/dictate.sh $PREFIX/bin/dictate
     chmod +x $PREFIX/bin/dictate
 
 ## 3. Verify the model loads on the phone
 
-    whisper-cli -m ~/whisper.cpp/models/ggml-model-q8_0.bin -f <some.wav> -l auto
+    whisper-cli -m ~/whisper.cpp/models/ggml-model-q4_0.bin -f <some.wav> -l auto
 
-It must report `type = 3 (small)` and `CPU total size ≈ 264 MB`.
+It must report `type = 3 (small)` and `CPU total size ≈ 145 MB (q4_0)`.
 
 ## 4. Full dictation test (Roman Urdu)
 

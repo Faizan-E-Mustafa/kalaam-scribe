@@ -27,9 +27,9 @@ HOME_DIR="${HOME}"
 
 # ---- paths (adjust if your install differs) --------------------------------
 WHISPER_CLI="${WHISPER_CLI:-${HOME_DIR}/whisper.cpp/build/bin/whisper-cli}"
-# Roman-Urdu fine-tune (small, q8_0): valid English dictation, clean Roman script
-# with -l auto. Switch back to ggml-base.en.bin + "-l en" for English-only.
-MODEL="${MODEL:-${HOME_DIR}/whisper.cpp/models/ggml-model-q8_0.bin}"
+# Roman-Urdu fine-tune (small, q4_0): fastest small-model quant, clean Roman
+# script with -l auto. Switch back to ggml-base.en.bin + "-l en" for English-only.
+MODEL="${MODEL:-${HOME_DIR}/whisper.cpp/models/ggml-model-q4_0.bin}"
 WORK="${WORK:-/data/data/com.termux/files/usr/tmp/dictate}"
 RAW_WAV="${WORK}/raw.wav"     # recorded by Termux:API (m4a/aac)
 WORK_WAV="${WORK}/clip.wav"   # 16 kHz mono for whisper
