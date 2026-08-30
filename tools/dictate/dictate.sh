@@ -35,6 +35,7 @@ OUT_TXT="${WORK}/clip.txt"
 
 NOTIF_ID="dictate-rec"
 LOG="${WORK}/dictate.log"
+DONE_FLAG="${WORK}/.transcribed"
 
 mkdir -p "$WORK"
 
@@ -70,8 +71,10 @@ transcribe_to_clipboard() {
 
 do_start() {
   log "start"
-  # remove any previous recording so the recorder won't refuse to overwrite it
-  rm -f "${RAW_WAV}.m4a" "$WORK_WAV" "$OUT_TXT"
+  # fresh recording: clear old files AND the duplicate-stop guard flag
+  rm -f "${RAW_WAV}.m4a" "$WORK_WAV" "$OUT_TXT" "$DONE_FLAG"
+  # clear any lingering ongoing notification from a previous run
+  termux-notification-remove --id "$NOTIF_ID" >/dev/null 2>&1 || true
   termux-notification --id "$NOTIF_ID" --ongoing --priority max \
     --title "Recording… tap Stop when done" \
     --content "Speak your message now." \
@@ -83,13 +86,23 @@ do_start() {
 do_stop() {
   log "stop"
   termux-microphone-record -q >/dev/null 2>&1 || true
-  termux-notification-remove --id "$NOTIF_ID" >/dev/null 2>&1 || true
   local src
   src="${RAW_WAV}.m4a"
-  if [[ ! -f "$src" || ! -s "$src" ]]; then
+  # guard: if we already transcribed this clip, ignore re-taps/duplicate Stop
+  # so we don't produce multiple transcripts. do_start clears the flag.
+  if [[ -f "$DONE_FLAG" || ! -f "$src" || ! -s "$src" ]]; then
+    if [[ -f "$DONE_FLAG" ]]; then
+      log "ignore duplicate stop"
+      exit 0
+    fi
     err "No recording found"
     exit 1
   fi
+  # mark as handled *before* transcribing so a second Stop can't re-run it
+  touch "$DONE_FLAG"
+  # remove the ongoing "Recording… tap Stop" notification now, before the
+  # (slower) transcription, so a rapid second tap finds no button.
+  termux-notification-remove --id "$NOTIF_ID" >/dev/null 2>&1 || true
   transcribe_to_clipboard "$src"
 }
 
