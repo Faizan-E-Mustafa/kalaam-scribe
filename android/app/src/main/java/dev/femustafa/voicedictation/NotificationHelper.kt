@@ -29,16 +29,12 @@ object NotificationHelper {
         }
     }
 
-    fun showRecording(context: Context) {
-        post(context, NOTIF_RECORDING, "Voice Dictation", "Recording… tap Stop")
+    fun showCopied(context: Context, transcript: String) {
+        post(context, NOTIF_COPIED, "Copied", transcript)
     }
 
     fun cancelRecording(context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIF_RECORDING)
-    }
-
-    fun showCopied(context: Context, transcript: String) {
-        post(context, NOTIF_COPIED, "Copied", transcript)
     }
 
     private fun post(context: Context, id: Int, title: String, text: String) {

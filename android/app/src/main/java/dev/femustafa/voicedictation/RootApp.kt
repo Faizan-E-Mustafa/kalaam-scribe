@@ -19,13 +19,9 @@ import kotlinx.coroutines.launch
 fun RootApp() {
     val context = LocalContext.current.applicationContext
     val scope = rememberCoroutineScope()
-    val manager = remember {
-        WhisperManager(context.filesDir, AarWhisperEngine(context))
-    }
+    val manager = VoiceDictationApp.from(context).whisper
     val pickerViewModel: ModelPickerViewModel = viewModel()
-    val dictationViewModel: DictationViewModel = viewModel(
-        factory = DictationViewModel.Factory(manager),
-    )
+    val dictationViewModel: DictationViewModel = viewModel()
 
     var showPicker by remember { mutableStateOf(false) }
 
