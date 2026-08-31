@@ -23,7 +23,9 @@ fun RootApp() {
         WhisperManager(context.filesDir, AarWhisperEngine(context))
     }
     val pickerViewModel: ModelPickerViewModel = viewModel()
-    val dictationViewModel: DictationViewModel = viewModel()
+    val dictationViewModel: DictationViewModel = viewModel(
+        factory = DictationViewModel.Factory(manager),
+    )
 
     var showPicker by remember { mutableStateOf(false) }
 

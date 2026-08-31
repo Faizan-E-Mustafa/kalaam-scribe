@@ -2,6 +2,7 @@ package dev.femustafa.voicedictation
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -19,10 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+
 /**
- * Dictation surface: shows the resident Model, a Record/Stop control that requests
- * the mic runtime permission on first use, and the last recorded file. Transcription
- * of the recorded clip is added in a later ticket.
+ * Dictation surface: shows the resident Model, Record/Stop control, and the
+ * transcript (or an error). Requests the mic runtime permission on first use, and
+ * the notification permission on API 33+. Stopping transcribes via the resident
+ * model and copies the result to the clipboard (ticket 12).
  */
 @Composable
 fun DictationScreen(
@@ -31,15 +34,27 @@ fun DictationScreen(
     onOpenPicker: () -> Unit,
 ) {
     val recording by viewModel.recording.collectAsState()
-    val lastFile by viewModel.lastFile.collectAsState()
+    val transcribing by viewModel.transcribing.collectAsState()
+    val transcript by viewModel.transcript.collectAsState()
     val error by viewModel.error.collectAsState()
 
     val context = LocalContext.current
 
-    val permissionLauncher = rememberLauncherForActivityResult(
+    val micLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        if (granted) viewModel.toggleRecording()
+    ) { granted -> if (granted) viewModel.toggleRecording() }
+
+    val notifLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { /* best effort */ }
+
+    fun maybeRequestNotifications() {
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
     }
 
     fun onRecordPressed() {
@@ -47,9 +62,10 @@ fun DictationScreen(
             context, Manifest.permission.RECORD_AUDIO,
         ) == PackageManager.PERMISSION_GRANTED
         if (granted) {
+            maybeRequestNotifications()
             viewModel.toggleRecording()
         } else {
-            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+            micLauncher.launch(Manifest.permission.RECORD_AUDIO)
         }
     }
 
@@ -69,17 +85,37 @@ fun DictationScreen(
             onClick = { onRecordPressed() },
             modifier = Modifier.padding(top = 24.dp),
         ) {
-            Text(if (recording) "Stop" else "Record")
+            Text(
+                when {
+                    recording -> "Stop"
+                    transcribing -> "…"
+                    else -> "Record"
+                },
+            )
         }
 
-        if (recording) {
-            Text(text = "Recording…", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
-        }
-        lastFile?.let {
-            Text(text = "Saved: $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-        }
-        error?.let {
-            Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        when {
+            recording -> Text(
+                text = "Recording… tap Stop to transcribe",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            transcribing -> Text(
+                text = "Transcribing…",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            transcript != null -> Text(
+                text = "Copied: $transcript",
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(top = 12.dp),
+            )
+            error != null -> Text(
+                text = error.orEmpty(),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 12.dp),
+            )
         }
 
         Button(
