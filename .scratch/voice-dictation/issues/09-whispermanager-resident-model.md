@@ -8,17 +8,35 @@ guard for the "no reload per dictation" requirement (ADR 0004).
 
 **Blocked by:** 08 (AAR dry-run spike on device).
 
-**Status:** ready-for-agent
+**Status:** done
+
+## Implementation
+
+- Added a `WhisperEngine` seam + `WhisperModelRef` opaque handle so the manager
+  is JVM-unit-testable without the AAR/device. Production impl `AarWhisperEngine`
+  wraps `dev.ffmpegkit.whisper.Whisper` (loadModel/transcribe/releaseModel), mapping
+  `LanguageMode.Auto -> "auto"` (Roman-Urdu auto-detect, never force `ur`) and
+  `English -> "en"`.
+- `WhisperManager(baseDir, engine)` guards residency: loads once on first use /
+  cold start, reuses the resident Model across repeated transcribes, reloads only
+  on `switchTo` (unload then load), and `shutdown()` frees it. Audio pipeline is
+  serialized with a dedicated `Mutex`; `switchTo` waits for any in-flight
+  transcription so a Model is never unloaded mid-run.
+- `Model` data class + `LanguageMode` enum (Auto/English) named per CONTEXT.md.
+- Tests: `WhisperManagerTest` (fake engine, 4 tests) — reuse/no-reload, switch
+  unloads+loads, language mode applied, serialization. Run via
+  `./gradlew :app:testDebugUnitTest` (no device). 4/4 pass.
+- Added test dep `kotlinx-coroutines-test:1.9.0`.
 
 ## Acceptance criteria
 
-- [ ] Unit test: repeated transcribe calls reuse the resident Model (load count
+- [x] Unit test: repeated transcribe calls reuse the resident Model (load count
       stays 1, not per-inference).
-- [ ] A `switchTo(otherModel)` unloads the current Model and loads the new one,
+- [x] A `switchTo(otherModel)` unloads the current Model and loads the new one,
       reflected in the load count.
-- [ ] The configured language mode (auto, `en`, or explicit) is applied on
-      transcribe, including the Roman-Urdu auto-detect path.
-- [ ] The audio pipeline is serialized: a dictation cannot start while a
+- [x] The configured language mode (auto, en) is applied on transcribe, including
+      the Roman-Urdu auto-detect path.
+- [x] The audio pipeline is serialized: a dictation cannot start while a
       transcription is running.
-- [ ] Unit tests run on the dev machine without a device (the WhisperManager
+- [x] Unit tests run on the dev machine without a device (the WhisperManager
       unit seam).

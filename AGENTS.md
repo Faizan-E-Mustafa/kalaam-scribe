@@ -2,6 +2,15 @@
 
 Guidance for AI-assisted coding in this repository.
 
+## Purpose: learning
+
+The user is an AI engineer using this project mainly to **learn new domains** (e.g.
+Android development). When helping:
+- Pause to explain non-obvious concepts and idioms the user may not know.
+- Keep explanations **concise**; avoid walls of text.
+- Where sensible, offer a **recommendation** (and note the trade-off) rather than
+  only laying out options.
+
 ## AI tools
 
 This project uses [opencode](https://opencode.ai). Custom skills live in
