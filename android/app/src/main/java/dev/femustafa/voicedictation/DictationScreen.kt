@@ -1,33 +1,57 @@
 package dev.femustafa.voicedictation
 
+import android.Manifest
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.launch
-
+import androidx.core.content.ContextCompat
+/**
+ * Dictation surface: shows the resident Model, a Record/Stop control that requests
+ * the mic runtime permission on first use, and the last recorded file. Transcription
+ * of the recorded clip is added in a later ticket.
+ */
 @Composable
-fun DictationScreen() {
+fun DictationScreen(
+    viewModel: DictationViewModel,
+    currentModel: Model?,
+    onOpenPicker: () -> Unit,
+) {
+    val recording by viewModel.recording.collectAsState()
+    val lastFile by viewModel.lastFile.collectAsState()
+    val error by viewModel.error.collectAsState()
+
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var running by remember { mutableStateOf(false) }
-    var result by remember { mutableStateOf("") }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        if (granted) viewModel.toggleRecording()
+    }
+
+    fun onRecordPressed() {
+        val granted = ContextCompat.checkSelfPermission(
+            context, Manifest.permission.RECORD_AUDIO,
+        ) == PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            viewModel.toggleRecording()
+        } else {
+            permissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+        }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(24.dp),
@@ -35,35 +59,34 @@ fun DictationScreen() {
         verticalArrangement = Arrangement.Center,
     ) {
         Text(text = "Voice Dictation", style = MaterialTheme.typography.headlineMedium)
-        Text(text = "SPIKE build (ticket 08): whisper AAR dry-run.", modifier = Modifier.padding(top = 8.dp))
-        Button(
-            onClick = {
-                running = true
-                result = "loading…"
-                scope.launch {
-                    result = try {
-                        SpikeRunner.run(context)
-                    } catch (t: Throwable) {
-                        "ERROR: ${t.message}"
-                    } finally {
-                        running = false
-                    }
-                }
-            },
-            modifier = Modifier.padding(top = 24.dp),
-        ) {
-            Text(if (running) "Running…" else "Run spike (jfk.wav)")
-        }
         Text(
-            text = result,
-            modifier = Modifier.padding(top = 16.dp).verticalScroll(rememberScrollState()),
+            text = "Model: ${currentModel?.id ?: "none"}",
+            modifier = Modifier.padding(top = 8.dp),
             style = MaterialTheme.typography.bodyMedium,
         )
-    }
-}
 
-@Preview(showBackground = true)
-@Composable
-fun DictationScreenPreview() {
-    DictationScreen()
+        Button(
+            onClick = { onRecordPressed() },
+            modifier = Modifier.padding(top = 24.dp),
+        ) {
+            Text(if (recording) "Stop" else "Record")
+        }
+
+        if (recording) {
+            Text(text = "Recording…", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 12.dp))
+        }
+        lastFile?.let {
+            Text(text = "Saved: $it", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        }
+        error?.let {
+            Text(text = it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+        }
+
+        Button(
+            onClick = onOpenPicker,
+            modifier = Modifier.padding(top = 16.dp),
+        ) {
+            Text("Models")
+        }
+    }
 }
