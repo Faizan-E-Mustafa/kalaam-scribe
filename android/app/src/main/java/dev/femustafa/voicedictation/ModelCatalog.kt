@@ -34,7 +34,7 @@ object ModelCatalog {
             displayName = "Roman-Urdu q8_0",
             sourceUrl = null, // local conversion, not publicly hosted
             approxSizeMb = 251,
-            isDefault = true,
+            isDefault = false,
         ),
         CatalogEntry(
             model = Model(id = "roman-urdu-f16", fileName = "ggml-model-f16.bin", languageMode = LanguageMode.Auto),
@@ -55,7 +55,7 @@ object ModelCatalog {
             displayName = "English quantized (q8_0)",
             sourceUrl = "$HF_WHISPER_CPP/ggml-base.en-q8_0.bin",
             approxSizeMb = 82,
-            isDefault = false,
+            isDefault = true,
         ),
         CatalogEntry(
             model = Model(id = "multilingual-small-q8", fileName = "ggml-small-q8_0.bin", languageMode = LanguageMode.Auto),
@@ -71,9 +71,16 @@ object ModelCatalog {
             approxSizeMb = 77,
             isDefault = false,
         ),
+        CatalogEntry(
+            model = Model(id = "english-tiny", fileName = "ggml-tiny.en.bin", languageMode = LanguageMode.English),
+            displayName = "English tiny (tiny.en)",
+            sourceUrl = "$HF_WHISPER_CPP/ggml-tiny.en.bin",
+            approxSizeMb = 75,
+            isDefault = false,
+        ),
     )
 
-    /** The default Model (Roman-Urdu q8_0). */
+    /** The default Model (English quantized, temporary until Roman-Urdu upload). */
     val default: CatalogEntry
         get() = models.first { it.isDefault }
 

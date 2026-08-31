@@ -92,6 +92,7 @@ class DictationService : Service() {
                     app.setError("No speech detected — please try again")
                 } else {
                     copyToClipboard(trimmed)
+                    app.appendHistory(trimmed)
                     notifyCopied(trimmed)
                 }
             } catch (t: Throwable) {

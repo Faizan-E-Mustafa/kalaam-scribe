@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Voice Dictation — UI Options</title>
+<style>
+  :root{--bg:#f6f7f9;--card:#fff;--ink:#1a1c1e;--muted:#5f6368;--accent:#1a73e8;--accent2:#0d652d;--danger:#ba1a1a;--radius:20px}
+  *{box-sizing:border-box;font-family: 'Google Sans', Roboto, system-ui, sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink)}
+  header{padding:24px 20px 8px;max-width:1200px;margin:auto}
+  header h1{margin:0;font-size:22px} header p{color:var(--muted);margin:6px 0 0}
+  .grid{max-width:1200px;margin:16px auto;padding:0 16px 40px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
+  .phone{background:var(--card);border-radius:28px;box-shadow:0 2px 12px rgba(0,0,0,.12);overflow:hidden;border:1px solid #e8eaed;display:flex;flex-direction:column;min-height:560px}
+  .phone-top{padding:18px 20px 10px;border-bottom:1px solid #f0f0f0}
+  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:#e8f0fe;color:#1967d2;padding:6px 10px;border-radius:999px}
+  .chip.muted{background:#f1f3f4;color:var(--muted)}
+  .chip.dot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
+  .chip.live::before{background:#ea4335;animation:pulse 1s infinite}
+  @keyframes pulse{0%{opacity:1}50%{opacity:.4}}
+  .title{font-size:22px;font-weight:700;margin:12px 0 2px}
+  .subtitle{color:var(--muted);font-size:13px}
+  .body{flex:1;padding:18px 16px;display:flex;flex-direction:column;gap:12px}
+  .transcript{background:#f8f9fa;border-radius:16px;padding:14px 14px 10px;border:1px solid #eef0f2}
+  .transcript label{font-size:11px;letter-spacing:.6px;color:var(--muted);text-transform:uppercase}
+  .transcript p{margin:8px 0 10px;font-size:15px;line-height:1.45}
+  .row{display:flex;gap:8px;flex-wrap:wrap}
+  .btn{border:0;border-radius:999px;padding:10px 16px;font-weight:600;cursor:pointer}
+  .btn.primary{background:var(--accent);color:#fff}
+  .btn.stop{background:#fce8e6;color:#a50e0e}
+  .btn.ghost{background:#f1f3f4;color:var(--ink)}
+  .btn.small{padding:8px 12px;font-size:13px}
+  .wave{display:flex;align-items:center;gap:3px;height:28px;justify-content:center}
+  .wave span{width:3px;background:var(--accent);border-radius:999px;animation:bar .6s ease-in-out infinite alternate}
+  .wave span:nth-child(2){animation-delay:.1s;height:18px} .wave span:nth-child(3){animation-delay:.2s;height:24px}
+  @keyframes bar{from{height:8px}to{height:26px}}
+  .model-list{display:flex;flex-direction:column;gap:8px}
+  .model-row{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #e8eaed;border-radius:12px}
+  .model-row.sel{border-color:var(--accent);background:#e8f0fe}
+  .badge{font-size:11px;background:#e6f4ea;color:var(--accent2);padding:4px 8px;border-radius:999px}
+  .history{font-size:13px;color:var(--muted)}
+  .history div{padding:8px 0;border-bottom:1px solid #f0f0f0}
+  .footer{padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
+  .label{font-size:12px;color:var(--muted)}
+  h3.opt{margin:0 0 6px;font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:#5f6368}
+</style>
+<header>
+  <h1>Voice Dictation — UI options (tap Record to toggle)</h1>
+  <p>3 HTML mockups. <b>A</b> = polish current layout · <b>B</b> = transcript-first (+ history/waveform) · <b>C</b> = compact dictation sheet. Pick one and I'll build it in Compose.</p>
+</header>
+<div class="grid">
+
+<!-- A: Polish current -->
+<section>
+  <h3 class="opt">A — Polish current (minimal change)</h3>
+  <div class="phone" id="optA">
+    <div class="phone-top">
+      <span class="chip dot">Model: roman-urdu-q4_0</span>
+      <div class="title">Voice Dictation</div>
+      <div class="subtitle">Tap Record, switch to WhatsApp, Stop in notification → Copied</div>
+    </div>
+    <div class="body">
+      <div style="display:flex;justify-content:center;padding:8px 0">
+        <button class="btn primary" style="min-width:160px;font-size:16px" onclick="toggleA()">● Record</button>
+      </div>
+      <div class="transcript" id="a-transcript">
+        <label>Last transcript</label>
+        <p id="a-text" style="color:var(--muted)">No dictation yet</p>
+        <div class="row"><button class="btn ghost small" onclick="copyA()">Copy</button><span class="label" id="a-status"></span></div>
+      </div>
+      <div class="row"><button class="btn ghost small">Models</button><span class="label">q4_0 is default · 139 MB</span></div>
+      <div class="label" style="margin-top:auto">Recording shows “Recording… tap Stop” notification (foreground service)</div>
+    </div>
+  </div>
+</section>
+
+<!-- B: Transcript-first -->
+<section>
+  <h3 class="opt">B — Transcript-first (recommended)</h3>
+  <div class="phone">
+    <div class="phone-top">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span class="chip live" id="b-chip">Recording · 00:04</span>
+        <span class="chip muted">roman-urdu-q4_0 · Auto</span>
+      </div>
+      <div class="wave" id="b-wave"><span></span><span></span><span></span><span></span><span></span></div>
+      <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
+        <button class="btn stop" onclick="bStop()">■ Stop</button>
+        <button class="btn ghost">Models</button>
+      </div>
+    </div>
+    <div class="body">
+      <div class="transcript" style="border-color:#c2e7ff;background:#e8f0fe">
+        <label>Copied to clipboard</label>
+        <p>“bhai kal meeting kab hai?”</p>
+        <div class="row"><button class="btn primary small">Copy</button><button class="btn ghost small">Share</button></div>
+      </div>
+      <div class="label">History</div>
+      <div class="history">
+        <div>“the quick brown fox…” — 12:31 · english-q8</div>
+        <div>“hello world” — 12:29 · english-q8</div>
+      </div>
+      <div class="label">Why B: big transcript + history makes pasting into WhatsApp faster; waveform gives confidence mic is live.</div>
+    </div>
+  </div>
+</section>
+
+<!-- C: Compact sheet -->
+<section>
+  <h3 class="opt">C — Compact sheet (one-hand)</h3>
+  <div class="phone" style="justify-content:flex-end;background:linear-gradient(#fff 60%, #f8f9fa)">
+    <div class="phone-top" style="border:0">
+      <div class="title" style="font-size:18px">Dictate</div>
+      <span class="chip">roman-urdu-q4_0</span> <span class="chip muted">Auto</span>
+    </div>
+    <div class="body">
+      <div class="model-list">
+        <div class="model-row sel"><span>Roman-Urdu q4_0 <span class="badge">default</span></span><span>139 MB</span></div>
+        <div class="model-row"><span>English q8_0</span><span>82 MB</span></div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:12px 0">
+        <button class="btn primary" style="flex:1">● Record</button>
+        <button class="btn ghost">⧉ Paste</button>
+      </div>
+      <div class="transcript"><label>Ready</label><p style="color:var(--muted)">Transcript appears here, then Paste into WhatsApp</p></div>
+    </div>
+    <div class="footer"><span class="label">Foreground service keeps mic hot in background</span><span class="label">v1.0</span></div>
+  </div>
+</section>
+
+</div>
+<script>
+let rec=false;
+function toggleA(){
+  rec=!rec;
+  const b=document.querySelector('#optA .btn.primary, #optA .btn.stop');
+  const t=document.getElementById('a-text'); const s=document.getElementById('a-status');
+  if(rec){ b.textContent='■ Stop'; b.className='btn stop'; t.textContent='Recording… tap Stop (or Stop in notification)'; t.style.color=''; s.textContent='Foreground service: mic hot while in WhatsApp';}
+  else { b.textContent='● Record'; b.className='btn primary'; t.textContent='“bhai kal meeting kab hai?”'; s.textContent='Copied · Transcribing done (resident model reused)';}
+}
+function copyA(){ document.getElementById('a-status').textContent='Copied to clipboard ✓';}
+function bStop(){ const c=document.getElementById('b-chip'); c.textContent='Copied · 00:06'; c.className='chip dot'; document.getElementById('b-wave').style.opacity=.25; }
+</script>
+</html>

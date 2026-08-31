@@ -39,6 +39,13 @@ class WhisperManager(
     val currentModel: Model?
         get() = residentModel
 
+    /** Used at startup to reflect the default Model when its file already exists (lazy load). */
+    fun setInitialModelIfNone(model: Model) {
+        if (residentModel == null && java.io.File(baseDir, model.fileName).exists()) {
+            residentModel = model
+        }
+    }
+
     fun absolutePath(model: Model): String =
         java.io.File(baseDir, model.fileName).absolutePath
 

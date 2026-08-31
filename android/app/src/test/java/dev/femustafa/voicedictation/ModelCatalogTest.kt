@@ -10,17 +10,17 @@ import org.junit.Test
 class ModelCatalogTest {
 
     @Test
-    fun hasSixModels() {
-        assertEquals(6, ModelCatalog.models.size)
+    fun hasSevenModels() {
+        assertEquals(7, ModelCatalog.models.size)
     }
 
     @Test
-    fun defaultIsRomanUrduQ8() {
+    fun defaultIsEnglishQ8() {
         val d = ModelCatalog.default
-        assertEquals("roman-urdu-q8", d.model.id)
+        assertEquals("english-q8", d.model.id)
         assertTrue(d.isDefault)
-        assertEquals("ggml-model-q8_0.bin", d.model.fileName)
-        assertEquals(LanguageMode.Auto, d.model.languageMode)
+        assertEquals("ggml-base.en-q8_0.bin", d.model.fileName)
+        assertEquals(LanguageMode.English, d.model.languageMode)
     }
 
     @Test
@@ -47,13 +47,14 @@ class ModelCatalogTest {
     @Test
     fun publicModelsPointAtWhisperCppHF() {
         val publicOnes = ModelCatalog.models.filter { it.sourceUrl != null }
-        // 4 of the 6 are publicly hosted.
-        assertEquals(4, publicOnes.size)
+        // 5 of the 7 are publicly hosted (2 Roman-Urdu are local).
+        assertEquals(5, publicOnes.size)
         for (e in publicOnes) {
             assertTrue(e.sourceUrl!!.startsWith(ModelCatalog.HF_WHISPER_CPP))
             assertTrue(e.sourceUrl!!.endsWith(e.model.fileName))
         }
-        assertFalse(ModelCatalog.default.sourceUrl != null)
+        // default is now the hosted English q8 (will be Roman-Urdu again after upload)
+        assertTrue(ModelCatalog.default.sourceUrl != null)
     }
 
     @Test

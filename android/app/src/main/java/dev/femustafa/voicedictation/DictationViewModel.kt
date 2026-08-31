@@ -24,6 +24,7 @@ class DictationViewModel(
     val transcribing: StateFlow<Boolean> = app.transcribing
     val transcript: StateFlow<String?> = app.transcript
     val error: StateFlow<String?> = app.error
+    val history: StateFlow<List<String>> = app.history
 
     /** Toggle dictation. The caller must have already secured the mic permission. */
     fun toggleRecording() {
