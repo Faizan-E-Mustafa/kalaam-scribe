@@ -78,6 +78,27 @@ object ModelCatalog {
             approxSizeMb = 75,
             isDefault = false,
         ),
+        CatalogEntry(
+            model = Model(id = "english-tiny-q8", fileName = "ggml-tiny.en-q8_0.bin", languageMode = LanguageMode.English),
+            displayName = "English tiny q8_0",
+            sourceUrl = "$HF_WHISPER_CPP/ggml-tiny.en-q8_0.bin",
+            approxSizeMb = 42,
+            isDefault = false,
+        ),
+        CatalogEntry(
+            model = Model(id = "tiny-q5", fileName = "ggml-tiny-q5_1.bin", languageMode = LanguageMode.Auto),
+            displayName = "Tiny q5_1 (multilingual)",
+            sourceUrl = "$HF_WHISPER_CPP/ggml-tiny-q5_1.bin",
+            approxSizeMb = 32,
+            isDefault = false,
+        ),
+        CatalogEntry(
+            model = Model(id = "english-tiny-q5", fileName = "ggml-tiny.en-q5_1.bin", languageMode = LanguageMode.English),
+            displayName = "English tiny q5_1",
+            sourceUrl = "$HF_WHISPER_CPP/ggml-tiny.en-q5_1.bin",
+            approxSizeMb = 32,
+            isDefault = false,
+        ),
     )
 
     /** The default Model (English quantized, temporary until Roman-Urdu upload). */

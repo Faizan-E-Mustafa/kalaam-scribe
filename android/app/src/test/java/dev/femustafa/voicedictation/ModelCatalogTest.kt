@@ -10,8 +10,8 @@ import org.junit.Test
 class ModelCatalogTest {
 
     @Test
-    fun hasSevenModels() {
-        assertEquals(7, ModelCatalog.models.size)
+    fun hasTenModels() {
+        assertEquals(10, ModelCatalog.models.size)
     }
 
     @Test
@@ -47,8 +47,8 @@ class ModelCatalogTest {
     @Test
     fun publicModelsPointAtWhisperCppHF() {
         val publicOnes = ModelCatalog.models.filter { it.sourceUrl != null }
-        // 5 of the 7 are publicly hosted (2 Roman-Urdu are local).
-        assertEquals(5, publicOnes.size)
+        // 8 of the 10 are publicly hosted (2 Roman-Urdu are local).
+        assertEquals(8, publicOnes.size)
         for (e in publicOnes) {
             assertTrue(e.sourceUrl!!.startsWith(ModelCatalog.HF_WHISPER_CPP))
             assertTrue(e.sourceUrl!!.endsWith(e.model.fileName))
