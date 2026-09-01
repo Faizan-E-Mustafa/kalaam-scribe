@@ -24,6 +24,7 @@ fun RootApp() {
     val dictationViewModel: DictationViewModel = viewModel()
 
     var showPicker by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
 
     if (showPicker) {
         ModelPickerScreen(
@@ -34,6 +35,8 @@ fun RootApp() {
             onDownload = { entry -> pickerViewModel.download(entry) },
             onClose = { showPicker = false },
         )
+    } else if (showSettings) {
+        SettingsScreen(onBack = { showSettings = false })
     } else {
         DictationScreen(
             viewModel = dictationViewModel,
@@ -42,6 +45,7 @@ fun RootApp() {
                 pickerViewModel.refresh()
                 showPicker = true
             },
+            onOpenSettings = { showSettings = true },
         )
     }
 }

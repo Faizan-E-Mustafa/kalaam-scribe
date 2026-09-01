@@ -31,7 +31,11 @@ class AarWhisperEngine(
         language: String?,
     ): String {
         val real = requireNotNull(model as? AarModelRef) { "unexpected model handle" }
-        val config = WhisperConfig(language = language ?: languageMode.whisperLanguage)
+        val threads = VoiceDictationApp.from(context).whisperThreads()
+        val config = WhisperConfig(
+            language = language ?: languageMode.whisperLanguage,
+            threads = threads,
+        )
         val result = Whisper.transcribe(real.model, audioPath, config)
         return result.text?.takeIf { it.isNotBlank() } ?: ""
     }

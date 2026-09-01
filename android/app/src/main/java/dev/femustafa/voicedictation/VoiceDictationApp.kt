@@ -115,8 +115,25 @@ class VoiceDictationApp : Application() {
         private const val PREFS_NAME = "voice_dictation"
         private const val KEY_LANGUAGE_CODE = "language_code"
         private const val KEY_MODEL_ID = "model_id"
+        private const val KEY_WHISPER_THREADS = "whisper_threads"
+        /** Default thread count; auto-select on first run is capped at this value. */
+        const val DEFAULT_WHISPER_THREADS = 6
 
         fun from(context: Context): VoiceDictationApp =
             context.applicationContext as VoiceDictationApp
+    }
+
+    /** The persisted thread count, auto-selecting on first run (capped at [DEFAULT_WHISPER_THREADS]). */
+    fun whisperThreads(): Int {
+        if (!prefs.contains(KEY_WHISPER_THREADS)) {
+            val auto = minOf(DEFAULT_WHISPER_THREADS, Runtime.getRuntime().availableProcessors())
+            prefs.edit().putInt(KEY_WHISPER_THREADS, auto).apply()
+        }
+        return prefs.getInt(KEY_WHISPER_THREADS, DEFAULT_WHISPER_THREADS)
+    }
+
+    /** Persist the user-chosen thread count (e.g. from the Settings screen). */
+    fun setWhisperThreads(count: Int) {
+        prefs.edit().putInt(KEY_WHISPER_THREADS, count).apply()
     }
 }

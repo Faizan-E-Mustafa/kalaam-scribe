@@ -62,6 +62,7 @@ fun DictationScreen(
     viewModel: DictationViewModel,
     currentModel: Model?,
     onOpenPicker: () -> Unit,
+    onOpenSettings: () -> Unit,
 ) {
     val recording by viewModel.recording.collectAsState()
     val transcribing by viewModel.transcribing.collectAsState()
@@ -138,6 +139,11 @@ fun DictationScreen(
                 )
                 else -> AssistChip(onClick = {}, label = { Text("Ready") })
             }
+            AssistChip(
+                onClick = onOpenSettings,
+                label = { Text("Settings" )},
+                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+            )
             AssistChip(
                 onClick = onOpenPicker,
                 label = {
