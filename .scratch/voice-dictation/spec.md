@@ -132,10 +132,10 @@ languages only via the multilingual Model.
   while the app process lives; reload only on Switch or cold start (ADR 0004).
   Serialize the audio pipeline so a second dictation cannot start during a
   transcription.
-- **Model catalog**: six Models, each a model file plus its language mode (see
+- **Model catalog**: ten Models, each a model file plus its language mode (see
   Notes for the table). In-app download from HuggingFace with progress; no size
-  gating. The default on first launch is Roman-Urdu q8_0, matching the current
-  Termux setup.
+  gating. The default on first launch is Roman-Urdu q4_0, matching the current
+  on-device setup (see tickets 16–18).
 - **Recording**: mic capture to 16 kHz mono PCM (matching the Termux 16 kHz step);
   the whisper library decodes/resamples as needed (no ffmpeg on-device).
 - **Foreground service**: starts only while recording/transcribing, then stops.
@@ -152,7 +152,7 @@ languages only via the multilingual Model.
   a device. Tests assert that repeated transcribe calls reuse the resident Model
   (load count stays 1), that Switch unloads and reloads, and that the language
   mode is applied. This is the primary guard for "no reload per inference".
-- **Unit seam — ModelCatalog**: maps each of the six Models to its file and
+- **Unit seam — ModelCatalog**: maps each of the ten Models to its file and
   language mode.
 - **Integration seam — on-device E2E** (the final acceptance gate): record a known
   English phrase and a known Roman-Urdu phrase, transcribe, and assert the
@@ -171,22 +171,29 @@ languages only via the multilingual Model.
 
 ## Further Notes
 
-### Model catalog (six entries)
+### Model catalog (ten entries)
 
 | # | Model | File (GGML) | Approx size | Language mode |
 |---|-------|-------------|-------------|---------------|
-| 1 | Roman-Urdu q8_0 (default) | `ggml-model-q8_0.bin` (small, q8_0) | 251 MB | auto |
+| 1 | Roman-Urdu q4_0 (default) | `ggml-model-q4_0.bin` (small, q4_0) | 139 MB | auto |
 | 2 | Roman-Urdu full | `ggml-model-f16.bin` (small, f16) | ~550 MB | auto |
 | 3 | English full | `ggml-base.en.bin` | ~148 MB | en |
 | 4 | English quantized | `ggml-base.en-q8_0.bin` | ~82 MB | en |
 | 5 | Multilingual small q8_0 | `ggml-small-q8_0.bin` | ~264 MB | auto |
 | 6 | Multilingual tiny full | `ggml-tiny.bin` | ~77 MB | auto |
+| 7 | English tiny | `ggml-tiny.en.bin` | ~75 MB | en |
+| 8 | English tiny q8_0 | `ggml-tiny.en-q8_0.bin` | ~42 MB | en |
+| 9 | Tiny q5_1 (multilingual) | `ggml-tiny-q5_1.bin` | ~32 MB | auto |
+| 10 | English tiny q5_1 | `ggml-tiny.en-q5_1.bin` | ~32 MB | en |
 
 - Roman-Urdu = `cheetos18/whisper-small-roman-urdu` fine-tune converted to
   whisper.cpp GGML; must run with language auto-detect to stay in Roman/Latin
-  script (do not force `ur`). See ticket 06 and CONTEXT.md language.
-- Sources: 1–2 converted locally from the HF fine-tune; 3–6 downloadable from the
-  `ggerganov/whisper.cpp` HuggingFace repo.
+  script (do not force `ur`). See tickets 06 and 16–18, and CONTEXT.md language.
+- Sources: 1–2 are conversions of the HF fine-tune, downloadable from
+  `femustafa/voicedictation-models` (tickets 16–18); 3–10 are downloadable from
+  the `ggerganov/whisper.cpp` HuggingFace repo.
+- The default is Roman-Urdu q4_0. f16 is a higher-quality optional download, not
+  the default (larger + slower on the A50).
 - The default Model downloads on first launch; full offline thereafter.
 
 ### Tail calls to Termux Phase 1

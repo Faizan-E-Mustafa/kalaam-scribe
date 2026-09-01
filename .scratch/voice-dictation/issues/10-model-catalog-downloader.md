@@ -8,6 +8,10 @@ so the user can choose a Model and its language mode and have the app fetch it.
 
 **Status:** done
 
+> Updated by ticket 18: Roman-Urdu entries are now hosted + downloadable
+> (`roman-urdu-q4_0` is the default; `roman-urdu-q8` removed), and the catalog
+> grew to ten Models (tiny variants added later).
+
 ## Implementation
 
 - `ModelCatalog` (object) — the six-Model table in code: each `CatalogEntry`

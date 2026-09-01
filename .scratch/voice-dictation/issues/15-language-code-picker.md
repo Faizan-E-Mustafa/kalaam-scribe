@@ -67,7 +67,8 @@ selected language drives transcription.
 
 - `Model.kt` — added `WhisperLanguages` (100 `code`→`name` pairs, matching
   `openai/whisper` `LANGUAGES` exactly), `Model.canOverrideLanguage` (Auto &&
-  !Roman-Urdu), and `isRomanUrdu(modelId)` for ids `roman-urdu-q8`/`roman-urdu-f16`.
+  !Roman-Urdu), and `isRomanUrdu(modelId)` for ids `roman-urdu-q4_0`/`roman-urdu-f16`
+  (originally `roman-urdu-q8`/`roman-urdu-f16`; q8 superseded by q4_0 in ticket 18).
   Note: whisper's `LANGUAGES` dict is **100** codes (`num_languages=99` is a
   separate tokenizer truncation default, not the dict size).
 - `WhisperEngine.kt` / `AarWhisperEngine.kt` — `transcribe(...)` takes an extra

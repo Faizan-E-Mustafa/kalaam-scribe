@@ -1,7 +1,7 @@
 # 06: Deploy Roman-Urdu model to A50
 
 **What to build:** The validated Roman-Urdu whisper.cpp model
-(`ggml-model-q8_0.bin`, small, q8_0, 251 MB) is deployed on the A50 and
+(`ggml-model-q4_0.bin`, small, q4_0, 139 MB) is deployed on the A50 and
 `dictate` switches to it, giving on-device dictation that transcribes spoken
 Roman Urdu into clean Roman/Latin script.
 
@@ -13,8 +13,8 @@ Roman Urdu into clean Roman/Latin script.
 
 - `cheetos18/whisper-small-roman-urdu` (`vocab_size` 51865, standard
   multilingual) converts to whisper.cpp GGML via `convert-h5-to-ggml.py`.
-- Converted to `ggml-model-q8_0.bin` (251 MB). Both f16 and q8_0 verified
-  running under whisper.cpp.
+- Converted to `ggml-model-q4_0.bin` (139 MB). Both f16 and q4_0 verified
+  running under whisper.cpp (ticket 16).
 - Real voice test (`samples/rec.wav`, user said "aap ka kya haal hai"):
   - **`-l auto` → clean Roman:** `aap ka kya haal hai`  ✓
   - `-l ur` → leaks Urdu script (`aap ka kya haal ہے۔`) — do NOT force `ur`.
@@ -22,18 +22,19 @@ Roman Urdu into clean Roman/Latin script.
 
 ## Steps
 
-- [ ] Get `ggml-model-q8_0.bin` (251 MB) onto the A50 at
-      `~/whisper.cpp/models/ggml-model-q8_0.bin`
-      (transfer method TBD: USB/adb push, `termux-setup-storage` + file copy, or cloud
+- [ ] Get `ggml-model-q4_0.bin` (139 MB) onto the A50 at
+      `~/whisper.cpp/models/ggml-model-q4_0.bin`
+      (now downloadable from `femustafa/voicedictation-models`, or transfer
+      method TBD: USB/adb push, `termux-setup-storage` + file copy, or cloud
       download from a link).
-- [ ] `dictate.sh` already updated in-repo: `MODEL` default → `ggml-model-q8_0.bin`,
+- [ ] `dictate.sh` already updated in-repo: `MODEL` default → `ggml-model-q4_0.bin`,
       `-l en` → `-l auto` (commit the change).
 - [ ] Push updated `dictate.sh` to the phone.
 - [ ] Verify a full record→transcribe→clipboard→paste loop with a Roman-Urdu
       message on the A50 (can reuse ticket 05 flow).
 - [ ] On-phone transcript must be Roman/Latin script, not Urdu script.
 - [ ] Re-run `tools/bench/bench.sh` to capture small-model timing/RTF on the A50
-      (decides whether q8 small is acceptable vs falling back to base).
+      (decides whether q4 small is acceptable vs falling back to base).
 
 ## Notes / risks
 

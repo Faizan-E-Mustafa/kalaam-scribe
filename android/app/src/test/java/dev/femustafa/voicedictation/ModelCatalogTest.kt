@@ -6,7 +6,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/** Unit tests for the ModelCatalog unit seam (spec "ModelCatalog maps six Models"). */
+/** Unit tests for the ModelCatalog unit seam (spec "Model catalog"). */
 class ModelCatalogTest {
 
     @Test
