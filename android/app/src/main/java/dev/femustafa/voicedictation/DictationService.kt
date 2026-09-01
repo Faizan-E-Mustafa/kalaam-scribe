@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.os.SystemClock
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
@@ -59,6 +60,7 @@ class DictationService : Service() {
         startForegroundCompat()
         app.setError(null)
         app.setTranscript(null)
+        app.onRecordingStarted()
         serviceScope.launch {
             try {
                 recorder.start(java.io.File(filesDir, "dictation.wav"))
@@ -85,7 +87,9 @@ class DictationService : Service() {
 
             app.setTranscribing(true)
             try {
+                val start = SystemClock.elapsedRealtime()
                 val text = whisper.transcribe(java.io.File(filesDir, "dictation.wav").absolutePath)
+                app.setLastTranscriptionMs(SystemClock.elapsedRealtime() - start)
                 app.setTranscript(text)
                 val trimmed = text.trim()
                 if (trimmed.isEmpty()) {

@@ -62,6 +62,9 @@ class VoiceDictationApp : Application() {
     private val _transcript = MutableStateFlow<String?>(null)
     val transcript: StateFlow<String?> = _transcript.asStateFlow()
 
+    private val _lastTranscriptionMs = MutableStateFlow<Long?>(null)
+    val lastTranscriptionMs: StateFlow<Long?> = _lastTranscriptionMs.asStateFlow()
+
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
@@ -78,6 +81,15 @@ class VoiceDictationApp : Application() {
 
     fun setTranscript(value: String?) {
         _transcript.value = value
+    }
+
+    fun setLastTranscriptionMs(ms: Long) {
+        _lastTranscriptionMs.value = ms
+    }
+
+    /** Called when a fresh recording starts: clear the previous result + timing. */
+    fun onRecordingStarted() {
+        _lastTranscriptionMs.value = null
     }
 
     fun setError(value: String?) {

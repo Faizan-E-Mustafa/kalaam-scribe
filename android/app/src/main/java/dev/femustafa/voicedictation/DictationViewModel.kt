@@ -23,6 +23,7 @@ class DictationViewModel(
     val recording: StateFlow<Boolean> = app.recording
     val transcribing: StateFlow<Boolean> = app.transcribing
     val transcript: StateFlow<String?> = app.transcript
+    val lastTranscriptionMs: StateFlow<Long?> = app.lastTranscriptionMs
     val error: StateFlow<String?> = app.error
     val history: StateFlow<List<String>> = app.history
 

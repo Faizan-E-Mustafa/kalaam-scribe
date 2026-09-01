@@ -65,6 +65,7 @@ fun DictationScreen(
     val recording by viewModel.recording.collectAsState()
     val transcribing by viewModel.transcribing.collectAsState()
     val transcript by viewModel.transcript.collectAsState()
+    val lastTranscriptionMs by viewModel.lastTranscriptionMs.collectAsState()
     val error by viewModel.error.collectAsState()
     val history by viewModel.history.collectAsState()
 
@@ -192,6 +193,14 @@ fun DictationScreen(
                     color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                 )
                 if (transcript != null) {
+                    val lastMs = lastTranscriptionMs
+                    if (lastMs != null) {
+                        Text(
+                            text = "Transcribed in ${"%.1f".format(lastMs / 1000.0)} s",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     FilledTonalButton(onClick = { copy(transcript!!) }) { Text("Copy") }
                 }
                 if (error != null && transcript == null && !recording && !transcribing) {

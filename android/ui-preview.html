@@ -4,140 +4,230 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Voice Dictation — UI Options</title>
 <style>
-  :root{--bg:#f6f7f9;--card:#fff;--ink:#1a1c1e;--muted:#5f6368;--accent:#1a73e8;--accent2:#0d652d;--danger:#ba1a1a;--radius:20px}
-  *{box-sizing:border-box;font-family: 'Google Sans', Roboto, system-ui, sans-serif}
-  body{margin:0;background:var(--bg);color:var(--ink)}
-  header{padding:24px 20px 8px;max-width:1200px;margin:auto}
-  header h1{margin:0;font-size:22px} header p{color:var(--muted);margin:6px 0 0}
-  .grid{max-width:1200px;margin:16px auto;padding:0 16px 40px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:20px}
-  .phone{background:var(--card);border-radius:28px;box-shadow:0 2px 12px rgba(0,0,0,.12);overflow:hidden;border:1px solid #e8eaed;display:flex;flex-direction:column;min-height:560px}
-  .phone-top{padding:18px 20px 10px;border-bottom:1px solid #f0f0f0}
-  .chip{display:inline-flex;align-items:center;gap:6px;font-size:12px;background:#e8f0fe;color:#1967d2;padding:6px 10px;border-radius:999px}
-  .chip.muted{background:#f1f3f4;color:var(--muted)}
-  .chip.dot::before{content:"";width:8px;height:8px;border-radius:50%;background:var(--accent)}
-  .chip.live::before{background:#ea4335;animation:pulse 1s infinite}
-  @keyframes pulse{0%{opacity:1}50%{opacity:.4}}
-  .title{font-size:22px;font-weight:700;margin:12px 0 2px}
-  .subtitle{color:var(--muted);font-size:13px}
-  .body{flex:1;padding:18px 16px;display:flex;flex-direction:column;gap:12px}
-  .transcript{background:#f8f9fa;border-radius:16px;padding:14px 14px 10px;border:1px solid #eef0f2}
-  .transcript label{font-size:11px;letter-spacing:.6px;color:var(--muted);text-transform:uppercase}
-  .transcript p{margin:8px 0 10px;font-size:15px;line-height:1.45}
+  /* ============================================================
+     Design tokens — the "theme" foundation
+     ============================================================ */
+  [data-theme="light"] {
+    /* Color trio */
+    --primary:        #1a6db5;   /* deep accessible blue */
+    --primary-ink:    #ffffff;
+    --secondary:      #e8f1fb;   /* soft blue container */
+    --secondary-ink:  #0b3b5e;
+    --tertiary:       #e6f4ea;   /* soft green */
+    --tertiary-ink:   #0d652d;
+    /* Surfaces & text */
+    --bg:             #f4f6f9;
+    --surface:        #ffffff;
+    --surface-2:      #f8f9fb;
+    --ink:            #1a1c1e;
+    --muted:          #5f6368;
+    --faint:          #8a9099;
+    --line:           #e5e8ec;
+    --line-strong:    #cfd6de;
+    /* Semantic */
+    --danger:         #b3261e;
+    --danger-bg:      #fce8e6;
+    --live:           #ea4335;
+    --success:        #188038;
+    --success-bg:     #e6f4ea;
+    /* Elevation */
+    --shadow-sm:      0 1px 2px rgba(16,24,40,.06), 0 1px 3px rgba(16,24,40,.08);
+    --shadow-md:      0 2px 6px rgba(16,24,40,.08), 0 8px 24px rgba(16,24,40,.08);
+    /* Radius & spacing scales */
+    --r-sm: 12px; --r-md: 16px; --r-lg: 20px; --r-pill: 999px;
+    --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+  }
+
+  [data-theme="dark"] {
+    --primary:        #8ec9ff;
+    --primary-ink:    #04263f;
+    --secondary:      #173a54;
+    --secondary-ink:  #cde6ff;
+    --tertiary:       #123d2a;
+    --tertiary-ink:   #bce9cb;
+    --bg:             #0f1216;
+    --surface:        #171b20;
+    --surface-2:      #1d2228;
+    --ink:            #e6e8eb;
+    --muted:          #a0a8b1;
+    --faint:          #717983;
+    --line:           #2a313a;
+    --line-strong:    #38414c;
+    --danger:         #f2b8b5;
+    --danger-bg:      #3a1d1c;
+    --live:           #ff6b61;
+    --success:        #79cf8f;
+    --success-bg:     #16301f;
+    --shadow-sm:      0 1px 2px rgba(0,0,0,.4), 0 1px 3px rgba(0,0,0,.5);
+    --shadow-md:      0 2px 6px rgba(0,0,0,.5), 0 8px 24px rgba(0,0,0,.5);
+  }
+
+  /* Typography scale */
+  :root {
+    --t-display: 600 25px/1.2 'Google Sans', Roboto, system-ui, sans-serif;
+    --t-title:   700 20px/1.25 'Google Sans', Roboto, system-ui, sans-serif;
+    --t-sub:     500 13px/1.4 Roboto, system-ui, sans-serif;
+    --t-body:    400 15px/1.5 Roboto, system-ui, sans-serif;
+    --t-small:   400 13px/1.45 Roboto, system-ui, sans-serif;
+    --t-caption: 600 11px/1.3 Roboto, system-ui, sans-serif;
+    --t-overline:600 11px/1.3 Roboto, system-ui, sans-serif;
+  }
+
+  *{box-sizing:border-box;font-family:Roboto, system-ui, sans-serif}
+  body{margin:0;background:var(--bg);color:var(--ink);transition:background .25s ease,color .25s ease}
+  body>header{max-width:1200px;margin:auto}
+  .hero{padding:28px 20px 6px}
+  .hero h1{margin:0;font:var(--t-display)}
+  .hero p{color:var(--muted);font:var(--t-body);margin:8px 0 0;max-width:640px}
+  .toolbar{display:flex;align-items:center;gap:12px;padding:12px 20px;flex-wrap:wrap}
+  .toolbar .hint{font:var(--t-small);color:var(--faint);margin-right:auto}
+
+  /* Theme toggle */
+  .toggle{background:var(--surface-2);border:1px solid var(--line);border-radius:var(--r-pill);padding:3px;display:inline-flex;box-shadow:var(--shadow-sm)}
+  .toggle button{border:0;background:transparent;color:var(--muted);font:var(--t-sub);padding:7px 14px;border-radius:var(--r-pill);cursor:pointer;transition:.15s ease}
+  .toggle button.on{background:var(--primary);color:var(--primary-ink);box-shadow:var(--shadow-sm)}
+
+  .grid{max-width:1200px;margin:8px auto;padding:0 20px 48px;display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:24px;align-items:start}
+
+  /* Option heading */
+  .opt-head{margin:0 0 10px;display:flex;align-items:center;gap:8px}
+  .opt-head .tag{font:var(--t-caption);letter-spacing:.08em;text-transform:uppercase;color:var(--faint)}
+  .opt-head .pill{font:var(--t-small);color:var(--primary);background:var(--secondary);padding:3px 10px;border-radius:var(--r-pill)}
+
+  /* Phone frame */
+  .phone{background:var(--surface);border-radius:30px;box-shadow:var(--shadow-md);overflow:hidden;border:1px solid var(--line);display:flex;flex-direction:column;min-height:600px;transition:background .25s ease,border-color .25s ease}
+  .phone-top{padding:18px 20px 12px;border-bottom:1px solid var(--line)}
+  .title{font:var(--t-title);margin:12px 0 2px}
+  .subtitle{color:var(--muted);font:var(--t-small)}
+  .body{flex:1;padding:18px 16px;display:flex;flex-direction:column;gap:14px}
+
+  /* Chips */
+  .chip{display:inline-flex;align-items:center;gap:7px;font:var(--t-small);font-weight:500;background:var(--surface-2);color:var(--muted);padding:6px 11px;border-radius:999px;border:1px solid var(--line)}
+  .chip .dot{width:8px;height:8px;border-radius:50%;background:var(--primary);flex:none}
+  .chip.rec{padding-left:9px}
+  .chip.rec .dot{background:var(--live);animation:pulse 1.2s infinite;box-shadow:0 0 0 0 rgba(234,67,53,.5)}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(234,67,53,.45)}
+    70%{box-shadow:0 0 0 6px rgba(234,67,53,0)}
+    100%{box-shadow:0 0 0 0 rgba(234,67,53,0)}
+  }
+  .chip.ready .dot{background:var(--success);box-shadow:0 0 0 3px var(--success-bg)}
+  .chip.timer{color:var(--danger);background:var(--danger-bg);border-color:transparent;font-variant-numeric:tabular-nums}
+
+  /* Buttons */
+  .btn{border:0;border-radius:var(--r-pill);padding:11px 18px;font:var(--t-sub);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:transform .08s ease,box-shadow .15s ease,background .15s ease,color .15s ease}
+  .btn:active{transform:scale(.97)}
+  .btn.primary{background:var(--primary);color:var(--primary-ink);box-shadow:var(--shadow-sm)}
+  .btn.primary:hover{filter:brightness(1.05);box-shadow:var(--shadow-md)}
+  .btn.stop{background:var(--danger-bg);color:var(--danger)}
+  .btn.stop:hover{background:var(--danger);color:var(--primary-ink)}
+  .btn.tonal{background:var(--secondary);color:var(--secondary-ink)}
+  .btn.tonal:hover{filter:brightness(.96)}
+  .btn.ghost{background:var(--surface-2);color:var(--muted);border:1px solid var(--line)}
+  .btn.ghost:hover{background:var(--line);color:var(--ink)}
+  .btn.small{padding:7px 13px;font-size:12px}
+  .btn svg{width:16px;height:16px;flex:none}
+
+  /* Waveform */
+  .wave{display:flex;align-items:center;justify-content:center;gap:4px;height:44px;margin:4px 0}
+  .wave .bar{width:4px;border-radius:999px;background:var(--primary);animation:bar .7s ease-in-out infinite alternate}
+  .wave .bar.quiet{background:var(--line-strong);animation:none;height:6px}
+  @keyframes bar{from{height:10px}to{height:38px}}
+  .wave.soft{opacity:0;transition:opacity .4s ease}
+
+  /* Transcript card */
+  .transcript{background:var(--surface-2);border-radius:var(--r-md);padding:14px 16px 12px;border:1px solid var(--line)}
+  .transcript.filled{border-color:var(--tertiary);background:var(--tertiary)}
+  .transcript.filled .blabel{color:var(--tertiary-ink)}
+  .transcript .blabel{font:var(--t-caption);color:var(--faint);display:flex;align-items:center;gap:6px}
+  .transcript .blabel .ok{color:var(--success);display:none}
+  .transcript.filled .blabel .ok{display:inline}
+  .transcript p{margin:10px 0 12px;font:var(--t-body);line-height:1.5}
+  .transcript .time{font:var(--t-small);color:var(--faint);margin:-4px 0 10px}
+  .transcript.placeholder p{color:var(--faint)}
   .row{display:flex;gap:8px;flex-wrap:wrap}
-  .btn{border:0;border-radius:999px;padding:10px 16px;font-weight:600;cursor:pointer}
-  .btn.primary{background:var(--accent);color:#fff}
-  .btn.stop{background:#fce8e6;color:#a50e0e}
-  .btn.ghost{background:#f1f3f4;color:var(--ink)}
-  .btn.small{padding:8px 12px;font-size:13px}
-  .wave{display:flex;align-items:center;gap:3px;height:28px;justify-content:center}
-  .wave span{width:3px;background:var(--accent);border-radius:999px;animation:bar .6s ease-in-out infinite alternate}
-  .wave span:nth-child(2){animation-delay:.1s;height:18px} .wave span:nth-child(3){animation-delay:.2s;height:24px}
-  @keyframes bar{from{height:8px}to{height:26px}}
-  .model-list{display:flex;flex-direction:column;gap:8px}
-  .model-row{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border:1px solid #e8eaed;border-radius:12px}
-  .model-row.sel{border-color:var(--accent);background:#e8f0fe}
-  .badge{font-size:11px;background:#e6f4ea;color:var(--accent2);padding:4px 8px;border-radius:999px}
-  .history{font-size:13px;color:var(--muted)}
-  .history div{padding:8px 0;border-bottom:1px solid #f0f0f0}
-  .footer{padding:12px 16px;border-top:1px solid #f0f0f0;display:flex;justify-content:space-between;align-items:center}
-  .label{font-size:12px;color:var(--muted)}
-  h3.opt{margin:0 0 6px;font-size:13px;letter-spacing:.5px;text-transform:uppercase;color:#5f6368}
+
+  /* History */
+  .hlabel{font:var(--t-caption);color:var(--faint);letter-spacing:.06em;text-transform:uppercase;margin-top:2px}
+  .history{display:flex;flex-direction:column}
+  .history .hrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:11px 2px;border-bottom:1px solid var(--line)}
+  .history .hrow:last-child{border-bottom:0}
+  .history .htext{font:var(--t-small);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;color:var(--ink)}
+  .history .hmeta{font:var(--t-small);color:var(--faint);white-space:nowrap}
+
+  .footer{padding:12px 16px;border-top:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+  .label{font:var(--t-small);color:var(--faint)}
+  .label.note{display:flex;align-items:center;gap:6px}
+
 </style>
 <header>
-  <h1>Voice Dictation — UI options (tap Record to toggle)</h1>
-  <p>3 HTML mockups. <b>A</b> = polish current layout · <b>B</b> = transcript-first (+ history/waveform) · <b>C</b> = compact dictation sheet. Pick one and I'll build it in Compose.</p>
+  <div class="hero">
+    <h1>Voice Dictation — UI preview</h1>
+    <p>Transcript-first layout (Option B) with history + waveform. Toggle theme to preview light and dark modes.</p>
+  </div>
+  <div class="toolbar">
+    <span class="hint">Tap Record / Stop to toggle states</span>
+    <div class="toggle" id="themeToggle">
+      <button data-theme="light" class="on">Light</button>
+      <button data-theme="dark">Dark</button>
+    </div>
+  </div>
 </header>
 <div class="grid">
 
-<!-- A: Polish current -->
 <section>
-  <h3 class="opt">A — Polish current (minimal change)</h3>
-  <div class="phone" id="optA">
-    <div class="phone-top">
-      <span class="chip dot">Model: roman-urdu-q4_0</span>
-      <div class="title">Voice Dictation</div>
-      <div class="subtitle">Tap Record, switch to WhatsApp, Stop in notification → Copied</div>
-    </div>
-    <div class="body">
-      <div style="display:flex;justify-content:center;padding:8px 0">
-        <button class="btn primary" style="min-width:160px;font-size:16px" onclick="toggleA()">● Record</button>
-      </div>
-      <div class="transcript" id="a-transcript">
-        <label>Last transcript</label>
-        <p id="a-text" style="color:var(--muted)">No dictation yet</p>
-        <div class="row"><button class="btn ghost small" onclick="copyA()">Copy</button><span class="label" id="a-status"></span></div>
-      </div>
-      <div class="row"><button class="btn ghost small">Models</button><span class="label">q4_0 is default · 139 MB</span></div>
-      <div class="label" style="margin-top:auto">Recording shows “Recording… tap Stop” notification (foreground service)</div>
-    </div>
-  </div>
-</section>
-
-<!-- B: Transcript-first -->
-<section>
-  <h3 class="opt">B — Transcript-first (recommended)</h3>
+  <div class="opt-head"><span class="pill">Transcript-first · recommended</span></div>
   <div class="phone">
     <div class="phone-top">
-      <div style="display:flex;justify-content:space-between;align-items:center">
-        <span class="chip live" id="b-chip">Recording · 00:04</span>
-        <span class="chip muted">roman-urdu-q4_0 · Auto</span>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="chip rec" id="b-chip"><span class="dot"></span>Recording · <span class="timer">00:04</span></span>
+        <span class="chip muted"><span class="dot"></span>roman-urdu-q4_0 · Auto</span>
       </div>
-      <div class="wave" id="b-wave"><span></span><span></span><span></span><span></span><span></span></div>
+      <div class="wave" id="b-wave">
+        <span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span><span class="bar"></span>
+      </div>
       <div style="display:flex;gap:8px;justify-content:center;margin-top:8px">
         <button class="btn stop" onclick="bStop()">■ Stop</button>
-        <button class="btn ghost">Models</button>
+        <button class="btn tonal">Models</button>
       </div>
     </div>
     <div class="body">
-      <div class="transcript" style="border-color:#c2e7ff;background:#e8f0fe">
-        <label>Copied to clipboard</label>
+      <div class="transcript filled">
+        <div class="blabel"><span class="ok">✓</span> Copied to clipboard</div>
         <p>“bhai kal meeting kab hai?”</p>
-        <div class="row"><button class="btn primary small">Copy</button><button class="btn ghost small">Share</button></div>
+        <div class="time">Transcribed in 1.2 s</div>
+        <div class="row">
+          <button class="btn primary small">Copy</button>
+        </div>
       </div>
-      <div class="label">History</div>
+      <div class="hlabel">History</div>
       <div class="history">
-        <div>“the quick brown fox…” — 12:31 · english-q8</div>
-        <div>“hello world” — 12:29 · english-q8</div>
+        <div class="hrow"><span class="htext">“the quick brown fox jumps over…”</span><span class="hmeta">12:31 · english-q8</span></div>
+        <div class="hrow"><span class="htext">“hello world”</span><span class="hmeta">12:29 · english-q8</span></div>
       </div>
-      <div class="label">Why B: big transcript + history makes pasting into WhatsApp faster; waveform gives confidence mic is live.</div>
+      <div class="label note">Big transcript + history makes pasting into WhatsApp faster; waveform confirms the mic is live.</div>
     </div>
-  </div>
-</section>
-
-<!-- C: Compact sheet -->
-<section>
-  <h3 class="opt">C — Compact sheet (one-hand)</h3>
-  <div class="phone" style="justify-content:flex-end;background:linear-gradient(#fff 60%, #f8f9fa)">
-    <div class="phone-top" style="border:0">
-      <div class="title" style="font-size:18px">Dictate</div>
-      <span class="chip">roman-urdu-q4_0</span> <span class="chip muted">Auto</span>
-    </div>
-    <div class="body">
-      <div class="model-list">
-        <div class="model-row sel"><span>Roman-Urdu q4_0 <span class="badge">default</span></span><span>139 MB</span></div>
-        <div class="model-row"><span>English q8_0</span><span>82 MB</span></div>
-      </div>
-      <div style="display:flex;gap:10px;align-items:center;justify-content:center;padding:12px 0">
-        <button class="btn primary" style="flex:1">● Record</button>
-        <button class="btn ghost">⧉ Paste</button>
-      </div>
-      <div class="transcript"><label>Ready</label><p style="color:var(--muted)">Transcript appears here, then Paste into WhatsApp</p></div>
-    </div>
-    <div class="footer"><span class="label">Foreground service keeps mic hot in background</span><span class="label">v1.0</span></div>
   </div>
 </section>
 
 </div>
 <script>
-let rec=false;
-function toggleA(){
-  rec=!rec;
-  const b=document.querySelector('#optA .btn.primary, #optA .btn.stop');
-  const t=document.getElementById('a-text'); const s=document.getElementById('a-status');
-  if(rec){ b.textContent='■ Stop'; b.className='btn stop'; t.textContent='Recording… tap Stop (or Stop in notification)'; t.style.color=''; s.textContent='Foreground service: mic hot while in WhatsApp';}
-  else { b.textContent='● Record'; b.className='btn primary'; t.textContent='“bhai kal meeting kab hai?”'; s.textContent='Copied · Transcribing done (resident model reused)';}
+// Theme toggle
+(function(){
+  var root=document.documentElement;
+  var def=root.getAttribute('data-theme')||'light';
+  function apply(t){ root.setAttribute('data-theme',t);
+    document.querySelectorAll('#themeToggle button').forEach(function(b){ b.classList.toggle('on', b.getAttribute('data-theme')===t); }); }
+  apply(def);
+  document.getElementById('themeToggle').addEventListener('click', function(e){
+    var t=e.target.getAttribute('data-theme'); if(t) apply(t); });
+})();
+
+// B: stop transitions chip + waveform into "done" state
+function bStop(){
+  var c=document.getElementById('b-chip');
+  c.className='chip ready'; c.innerHTML='<span class="dot"></span>Copied · 00:06';
+  var w=document.getElementById('b-wave'); w.classList.add('soft');
 }
-function copyA(){ document.getElementById('a-status').textContent='Copied to clipboard ✓';}
-function bStop(){ const c=document.getElementById('b-chip'); c.textContent='Copied · 00:06'; c.className='chip dot'; document.getElementById('b-wave').style.opacity=.25; }
 </script>
 </html>
