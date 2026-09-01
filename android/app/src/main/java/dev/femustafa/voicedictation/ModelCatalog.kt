@@ -1,14 +1,14 @@
 package dev.femustafa.voicedictation
 
 /**
- * The six-Model catalog from the spec (spec.Notes "Model catalog"): each entry is
- * a GGML file plus its language mode, its public source, approximate size, and a
+ * The Model catalog from the spec (spec.Notes "Model catalog"): each entry is a
+ * GGML file plus its language mode, its public source, approximate size, and a
  * default flag. This is the ModelCatalog unit seam, so it is pure Kotlin (no
  * Android/device) and unit-tested.
  *
  * Sources:
- * - 1–2 Roman-Urdu are local conversions of `cheetos18/whisper-small-roman-urdu`
- *   (not publicly hosted), so `sourceUrl == null` (manual copy to app storage).
+ * - 1–2 Roman-Urdu are conversions of `cheetos18/whisper-small-roman-urdu`
+ *   hosted on the project's own HuggingFace repo (see [RU_HF]).
  * - 3–6 are downloadable from the `ggerganov/whisper.cpp` HuggingFace repo.
  */
 data class CatalogEntry(
@@ -27,19 +27,20 @@ data class CatalogEntry(
 object ModelCatalog {
 
     const val HF_WHISPER_CPP = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main"
+    const val RU_HF = "https://huggingface.co/femustafa/voicedictation-models/resolve/main"
 
     val models: List<CatalogEntry> = listOf(
         CatalogEntry(
-            model = Model(id = "roman-urdu-q8", fileName = "ggml-model-q8_0.bin", languageMode = LanguageMode.Auto),
-            displayName = "Roman-Urdu q8_0",
-            sourceUrl = null, // local conversion, not publicly hosted
-            approxSizeMb = 251,
-            isDefault = false,
+            model = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.Auto),
+            displayName = "Roman-Urdu q4_0",
+            sourceUrl = "$RU_HF/ggml-model-q4_0.bin",
+            approxSizeMb = 139,
+            isDefault = true,
         ),
         CatalogEntry(
             model = Model(id = "roman-urdu-f16", fileName = "ggml-model-f16.bin", languageMode = LanguageMode.Auto),
             displayName = "Roman-Urdu full (f16)",
-            sourceUrl = null, // local conversion, not publicly hosted
+            sourceUrl = "$RU_HF/ggml-model-f16.bin",
             approxSizeMb = 550,
             isDefault = false,
         ),
@@ -55,7 +56,7 @@ object ModelCatalog {
             displayName = "English quantized (q8_0)",
             sourceUrl = "$HF_WHISPER_CPP/ggml-base.en-q8_0.bin",
             approxSizeMb = 82,
-            isDefault = true,
+            isDefault = false,
         ),
         CatalogEntry(
             model = Model(id = "multilingual-small-q8", fileName = "ggml-small-q8_0.bin", languageMode = LanguageMode.Auto),
@@ -101,7 +102,7 @@ object ModelCatalog {
         ),
     )
 
-    /** The default Model (English quantized, temporary until Roman-Urdu upload). */
+    /** The default Model (Roman-Urdu q4_0, the spec default). */
     val default: CatalogEntry
         get() = models.first { it.isDefault }
 

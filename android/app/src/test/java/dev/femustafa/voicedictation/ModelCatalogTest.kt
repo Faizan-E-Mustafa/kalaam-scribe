@@ -2,7 +2,7 @@ package dev.femustafa.voicedictation
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,25 +15,28 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun defaultIsEnglishQ8() {
+    fun defaultIsRomanUrduQ4() {
         val d = ModelCatalog.default
-        assertEquals("english-q8", d.model.id)
+        assertEquals("roman-urdu-q4_0", d.model.id)
         assertTrue(d.isDefault)
-        assertEquals("ggml-base.en-q8_0.bin", d.model.fileName)
-        assertEquals(LanguageMode.English, d.model.languageMode)
+        assertEquals("ggml-model-q4_0.bin", d.model.fileName)
+        assertEquals(LanguageMode.Auto, d.model.languageMode)
     }
 
     @Test
-    fun romanUrduModelsAreAutoDetectAndNotPubliclyHosted() {
-        val ruQ8 = ModelCatalog.byId("roman-urdu-q8")!!
+    fun romanUrduModelsAreAutoDetectAndHosted() {
+        val ruQ4 = ModelCatalog.byId("roman-urdu-q4_0")!!
         val ruF16 = ModelCatalog.byId("roman-urdu-f16")!!
 
         // Roman-Urdu must stay in Roman/Latin script -> auto-detect, never `ur`.
-        assertEquals(LanguageMode.Auto, ruQ8.model.languageMode)
+        assertEquals(LanguageMode.Auto, ruQ4.model.languageMode)
         assertEquals(LanguageMode.Auto, ruF16.model.languageMode)
-        // Locally converted, not downloadable.
-        assertNull(ruQ8.sourceUrl)
-        assertNull(ruF16.sourceUrl)
+        // Downloadable from the project's Roman-Urdu HuggingFace repo.
+        assertNotNull(ruQ4.sourceUrl)
+        assertNotNull(ruF16.sourceUrl)
+        assertTrue(ruQ4.sourceUrl!!.startsWith(ModelCatalog.RU_HF))
+        assertTrue(ruQ4.sourceUrl!!.endsWith(ruQ4.model.fileName))
+        assertTrue(ruF16.sourceUrl!!.endsWith(ruF16.model.fileName))
     }
 
     @Test
@@ -45,15 +48,18 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun publicModelsPointAtWhisperCppHF() {
+    fun publicModelsPointAtTheirRespectiveHF() {
         val publicOnes = ModelCatalog.models.filter { it.sourceUrl != null }
-        // 8 of the 10 are publicly hosted (2 Roman-Urdu are local).
-        assertEquals(8, publicOnes.size)
+        // All 10 are publicly hosted: 8 from whisper.cpp + 2 Roman-Urdu from RU_HF.
+        assertEquals(10, publicOnes.size)
+        val whisperCpp = publicOnes.filter { it.sourceUrl!!.startsWith(ModelCatalog.HF_WHISPER_CPP) }
+        val ru = publicOnes.filter { it.sourceUrl!!.startsWith(ModelCatalog.RU_HF) }
+        assertEquals(8, whisperCpp.size)
+        assertEquals(2, ru.size)
         for (e in publicOnes) {
-            assertTrue(e.sourceUrl!!.startsWith(ModelCatalog.HF_WHISPER_CPP))
             assertTrue(e.sourceUrl!!.endsWith(e.model.fileName))
         }
-        // default is now the hosted English q8 (will be Roman-Urdu again after upload)
+        // default is the hosted Roman-Urdu q4_0.
         assertTrue(ModelCatalog.default.sourceUrl != null)
     }
 

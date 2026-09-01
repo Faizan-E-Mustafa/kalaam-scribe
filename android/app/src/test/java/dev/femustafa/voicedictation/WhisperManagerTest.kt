@@ -18,7 +18,7 @@ class WhisperManagerTest {
     private val baseDir = File("/tmp/fake-model-dir")
 
     private val english = Model(id = "english-q8", fileName = "ggml-base.en-q8_0.bin", languageMode = LanguageMode.English)
-    private val romanUrdu = Model(id = "roman-urdu-q8", fileName = "ggml-model-q8_0.bin", languageMode = LanguageMode.Auto)
+    private val romanUrdu = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.Auto)
 
     private class FakeHandle : WhisperModelRef
 

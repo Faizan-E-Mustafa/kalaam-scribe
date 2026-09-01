@@ -6,26 +6,27 @@ the Android app can download them at runtime instead of requiring a manual copy.
 
 **Blocked by:** 16 — Convert Roman-Urdu to GGML (f16 + q4_0)
 
-**Status:** ready-for-agent (needs human for the HF token step)
+**Status:** done
 
-## Approach
+## Verified
+
+Repo: https://huggingface.co/femustafa/voicedictation-models (public)
+
+- [x] [human] Generate HF Write access token (Settings → Access Tokens)
+- [x] Repo created public (actually via `hf repos create`; wizard also supports it)
+- [x] `ggml-model-q4_0.bin` uploaded and downloadable (HTTP 200, 145,458,032 bytes)
+- [x] `ggml-model-f16.bin` uploaded and downloadable (HTTP 200, 487,601,984 bytes)
+- [x] File names match exactly what the app catalog references
+- [x] `README.md` added (model card: source, files, `-l auto` usage)
+
+## Approach notes
 
 The repo must be **public**: the Android app's plain `HttpURLConnection`
 downloader sends no auth headers, so a private repo would break the runtime
 download (ticket 18). The model derives from the MIT-licensed public fine-tune,
 so hosting it carries no proprietary risk.
 
-Upload is driven by `tools/roman-urdu/hf-upload.sh`, a wizard that:
-1. Captures the user's HF **Write** access token (`HF_TOKEN` in `.env`).
-2. Creates the public repo `<user>/voicedictation-models` (idempotent; resolves
-   the real username from the token, not a hardcoded one).
-3. Uploads both `.bin` files as Git LFS (auto-detected for `.bin`).
-
-The human's only manual step is generating the HF token; everything else is
-automated with `huggingface_hub` (already in the `validate_stt` venv).
-
-- [ ] [human] Generate HF Write access token (Settings → Access Tokens)
-- [ ] `tools/roman-urdu/hf-upload.sh` creates the public repo
-- [ ] `ggml-model-q4_0.bin` uploaded and downloadable (HTTP 200)
-- [ ] `ggml-model-f16.bin` uploaded and downloadable (HTTP 200)
-- [ ] File names match exactly what the app catalog references
+Upload was driven by the human via the `hf` CLI (`hf repos create` + `hf upload`
+after `hf auth login`); `tools/roman-urdu/hf-upload.sh` is an alternative wizard
+that captures an HF Write token into `.env`, creates the public repo, and uploads
+via `huggingface_hub`.

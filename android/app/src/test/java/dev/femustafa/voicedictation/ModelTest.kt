@@ -42,16 +42,16 @@ class ModelTest {
     @Test
     fun englishAndRomanUrduCannotOverrideLanguage() {
         val english = Model(id = "english-q8", fileName = "ggml-base.en-q8_0.bin", languageMode = LanguageMode.English)
-        val romanUrduQ8 = Model(id = "roman-urdu-q8", fileName = "ggml-model-q8_0.bin", languageMode = LanguageMode.Auto)
+        val romanUrduQ4 = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.Auto)
         val romanUrduF16 = Model(id = "roman-urdu-f16", fileName = "ggml-model-f16.bin", languageMode = LanguageMode.Auto)
         assertFalse(english.canOverrideLanguage)
-        assertFalse(romanUrduQ8.canOverrideLanguage)
+        assertFalse(romanUrduQ4.canOverrideLanguage)
         assertFalse(romanUrduF16.canOverrideLanguage)
     }
 
     @Test
-    fun isRomanUrduMatchesBothConversionIds() {
-        assertTrue(isRomanUrdu("roman-urdu-q8"))
+    fun isRomanUrduMatchesRomanUrduIds() {
+        assertTrue(isRomanUrdu("roman-urdu-q4_0"))
         assertTrue(isRomanUrdu("roman-urdu-f16"))
         assertFalse(isRomanUrdu("multilingual-tiny"))
         assertFalse(isRomanUrdu("english-q8"))
