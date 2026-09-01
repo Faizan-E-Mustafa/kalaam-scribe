@@ -48,6 +48,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 
@@ -139,7 +140,17 @@ fun DictationScreen(
             }
             AssistChip(
                 onClick = onOpenPicker,
-                label = { Text(currentModel?.id ?: "no model") },
+                label = {
+                    Text(
+                        currentModel?.let { m ->
+                            val mode = when (m.languageMode) {
+                                LanguageMode.Auto -> "Auto"
+                                LanguageMode.English -> "English"
+                            }
+                            "${m.id} · $mode"
+                        } ?: "no model",
+                    )
+                },
             )
         }
 
@@ -228,8 +239,15 @@ fun DictationScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Text(item, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f).padding(end = 8.dp))
-                            FilledTonalButton(onClick = { copy(item) }, modifier = Modifier.height(32.dp)) { Text("Copy", style = MaterialTheme.typography.labelSmall) }
+                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                Text(item.text, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    "${item.time} · ${item.modelId}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            FilledTonalButton(onClick = { copy(item.text) }, modifier = Modifier.height(32.dp)) { Text("Copy", style = MaterialTheme.typography.labelSmall) }
                         }
                     }
                 }
@@ -248,12 +266,32 @@ fun DictationScreen(
 @Composable
 private fun Waveform(modifier: Modifier = Modifier) {
     val t = rememberInfiniteTransition(label = "wave")
-    val h1 by t.animateFloat(initialValue = 8f, targetValue = 26f, animationSpec = infiniteRepeatable(tween(380, easing = LinearEasing), RepeatMode.Reverse), label = "h1")
-    val h2 by t.animateFloat(initialValue = 14f, targetValue = 22f, animationSpec = infiniteRepeatable(tween(420, easing = LinearEasing), RepeatMode.Reverse), label = "h2")
-    val h3 by t.animateFloat(initialValue = 10f, targetValue = 28f, animationSpec = infiniteRepeatable(tween(360, easing = LinearEasing), RepeatMode.Reverse), label = "h3")
+    val amps = listOf(
+        t.animateFloat(8f, 26f, 380),
+        t.animateFloat(14f, 22f, 420),
+        t.animateFloat(10f, 28f, 360),
+        t.animateFloat(18f, 24f, 440),
+        t.animateFloat(12f, 20f, 400),
+        t.animateFloat(9f, 27f, 350),
+        t.animateFloat(16f, 23f, 430),
+        t.animateFloat(11f, 25f, 390),
+        t.animateFloat(13f, 21f, 410),
+    )
     Row(modifier = modifier, horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-        listOf(h1, h2, h3, h2, h1).forEach { h ->
-            Box(Modifier.padding(horizontal = 3.dp).width(4.dp).height(h.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary))
+        amps.forEach { h ->
+            Box(Modifier.padding(horizontal = 3.dp).width(4.dp).height(h.value.dp).clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary))
         }
     }
 }
+
+@Composable
+private fun androidx.compose.animation.core.InfiniteTransition.animateFloat(
+    from: Float,
+    to: Float,
+    duration: Int,
+): androidx.compose.runtime.State<Float> = animateFloat(
+    initialValue = from,
+    targetValue = to,
+    animationSpec = infiniteRepeatable(tween(duration, easing = LinearEasing), RepeatMode.Reverse),
+    label = "bar",
+)

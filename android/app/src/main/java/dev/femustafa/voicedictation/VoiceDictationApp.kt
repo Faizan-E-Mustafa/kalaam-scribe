@@ -7,6 +7,17 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 /**
+ * One entry in the history list shown on the dictation screen: the transcript
+ * text plus the time it was dictated (HH:mm) and which Model produced it
+ * (mirrors the `History` rows in ui-preview.html).
+ */
+data class DictationHistoryItem(
+    val text: String,
+    val time: String,
+    val modelId: String,
+)
+
+/**
  * App-scoped singleton holder (an idiomatic Android pattern for sharing one
  * resident model and a UI-observable state bus across the Activity and the
  * [DictationService]). Only one [WhisperManager] exists for the whole process,
@@ -68,8 +79,8 @@ class VoiceDictationApp : Application() {
     private val _error = MutableStateFlow<String?>(null)
     val error: StateFlow<String?> = _error.asStateFlow()
 
-    private val _history = MutableStateFlow<List<String>>(emptyList())
-    val history: StateFlow<List<String>> = _history.asStateFlow()
+    private val _history = MutableStateFlow<List<DictationHistoryItem>>(emptyList())
+    val history: StateFlow<List<DictationHistoryItem>> = _history.asStateFlow()
 
     fun setRecording(value: Boolean) {
         _recording.value = value
@@ -96,8 +107,8 @@ class VoiceDictationApp : Application() {
         _error.value = value
     }
 
-    fun appendHistory(text: String) {
-        _history.value = (listOf(text) + _history.value).take(10)
+    fun appendHistory(item: DictationHistoryItem) {
+        _history.value = (listOf(item) + _history.value).take(10)
     }
 
     companion object {

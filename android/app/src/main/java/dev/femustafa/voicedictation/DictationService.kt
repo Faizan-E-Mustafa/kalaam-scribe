@@ -96,7 +96,15 @@ class DictationService : Service() {
                     app.setError("No speech detected — please try again")
                 } else {
                     copyToClipboard(trimmed)
-                    app.appendHistory(trimmed)
+                    val modelId = whisper.currentModel?.id ?: "unknown"
+                    app.appendHistory(
+                        DictationHistoryItem(
+                            text = trimmed,
+                            time = java.time.LocalTime.now()
+                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm")),
+                            modelId = modelId,
+                        ),
+                    )
                     notifyCopied(trimmed)
                 }
             } catch (t: Throwable) {
