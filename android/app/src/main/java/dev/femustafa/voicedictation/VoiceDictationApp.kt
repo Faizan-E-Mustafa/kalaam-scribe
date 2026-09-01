@@ -22,12 +22,35 @@ class VoiceDictationApp : Application() {
     /** The single shared resident-model manager, created lazily on first use. */
     val whisper: WhisperManager by lazy {
         WhisperManager(filesDir, AarWhisperEngine(this)).also { mgr ->
-            // If the default Model's file is already on disk (e.g. english-q8 was
-            // downloaded before the default switched), reflect it as the resident
-            // Model so the top chip doesn't show "no model" and transcription can
-            // start without an extra picker tap. Load remains lazy.
-            mgr.setInitialModelIfNone(ModelCatalog.default.model)
+            // Reflect the user's last-chosen Model (or the catalog default) as the
+            // resident Model when its file is already on disk, so the top chip shows
+            // it and transcription can start without a picker tap. Load is lazy.
+            mgr.setInitialModelIfNone(initialModel().model)
+            // Restore the persisted language-code selection.
+            mgr.setLanguageCode(prefs.getString(KEY_LANGUAGE_CODE, null))
         }
+    }
+
+    private val prefs: android.content.SharedPreferences
+        get() = getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+    /** The last Model the user selected (persisted), or null if never chosen. */
+    val persistedModelId: String?
+        get() = prefs.getString(KEY_MODEL_ID, null)
+
+    /** The Model to start with: the persisted user selection if known, else the catalog default. */
+    fun initialModel(): CatalogEntry =
+        persistedModelId?.let { ModelCatalog.byId(it) } ?: ModelCatalog.default
+
+    /** Persist the user's chosen Model so it is restored on the next launch. */
+    fun setSelectedModelId(id: String) {
+        prefs.edit().putString(KEY_MODEL_ID, id).apply()
+    }
+
+    /** Persist + publish a user-picked whisper language code (null/blank = auto). */
+    fun setLanguageCode(code: String?) {
+        prefs.edit().putString(KEY_LANGUAGE_CODE, code).apply()
+        whisper.setLanguageCode(code)
     }
 
     private val _recording = MutableStateFlow(false)
@@ -66,6 +89,10 @@ class VoiceDictationApp : Application() {
     }
 
     companion object {
+        private const val PREFS_NAME = "voice_dictation"
+        private const val KEY_LANGUAGE_CODE = "language_code"
+        private const val KEY_MODEL_ID = "model_id"
+
         fun from(context: Context): VoiceDictationApp =
             context.applicationContext as VoiceDictationApp
     }

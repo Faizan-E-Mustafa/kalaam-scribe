@@ -4,6 +4,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
@@ -16,15 +17,15 @@ class WhisperManagerTest {
 
     private val baseDir = File("/tmp/fake-model-dir")
 
-    private val english = Model(id = "en-q8", fileName = "ggml-base.en-q8_0.bin", languageMode = LanguageMode.English)
-    private val romanUrdu = Model(id = "ru-q8", fileName = "ggml-model-q8_0.bin", languageMode = LanguageMode.Auto)
+    private val english = Model(id = "english-q8", fileName = "ggml-base.en-q8_0.bin", languageMode = LanguageMode.English)
+    private val romanUrdu = Model(id = "roman-urdu-q8", fileName = "ggml-model-q8_0.bin", languageMode = LanguageMode.Auto)
 
     private class FakeHandle : WhisperModelRef
 
     private class FakeEngine : WhisperEngine {
         var loadCount = 0
         val released = mutableListOf<WhisperModelRef>()
-        val transcribeCalls = mutableListOf<Pair<String, LanguageMode>>()
+        val transcribeCalls = mutableListOf<Triple<String, LanguageMode, String?>>()
 
         /** Number of times transcribe() was entered (before any gate). */
         var transcribeEntryCount = 0
@@ -45,11 +46,12 @@ class WhisperManagerTest {
             model: WhisperModelRef,
             audioPath: String,
             languageMode: LanguageMode,
+            language: String?,
         ): String {
             transcribeEntryCount++
             if (!transcribeEntered.isCompleted) transcribeEntered.complete(Unit)
             gate?.await()
-            transcribeCalls += audioPath to languageMode
+            transcribeCalls += Triple(audioPath, languageMode, language)
             return "text"
         }
 
@@ -97,14 +99,63 @@ class WhisperManagerTest {
         manager.switchTo(english)
         manager.transcribe("/data/audio/a.wav")
 
-        val (audio, mode) = engine.transcribeCalls.single()
-        assertEquals("/data/audio/a.wav", audio)
-        assertEquals(LanguageMode.English, mode)
+        val (audio1, mode1, lang1) = engine.transcribeCalls.single()
+        assertEquals("/data/audio/a.wav", audio1)
+        assertEquals(LanguageMode.English, mode1)
+        // No user override for a fixed-English Model.
+        assertNull(lang1)
 
-        // Roman-Urdu (auto) is applied as Auto.
+        // Roman-Urdu (auto) is applied as Auto, never overridden to `ur`.
         manager.switchTo(romanUrdu)
         manager.transcribe("/data/audio/b.wav")
-        assertEquals(LanguageMode.Auto, engine.transcribeCalls.last().second)
+        val (_, mode2, lang2) = engine.transcribeCalls.last()
+        assertEquals(LanguageMode.Auto, mode2)
+        assertNull(lang2)
+    }
+
+    @Test
+    fun userLanguageAppliesOnlyToMultilingualModels() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+        val multilingual = Model(id = "multilingual-tiny", fileName = "ggml-tiny.bin", languageMode = LanguageMode.Auto)
+
+        manager.switchTo(multilingual)
+        manager.setLanguageCode("de")
+        manager.transcribe("/data/audio/a.wav")
+
+        val (_, mode, lang) = engine.transcribeCalls.single()
+        assertEquals(LanguageMode.Auto, mode)
+        assertEquals("de", lang)
+    }
+
+    @Test
+    fun userLanguageDoesNotApplyToEnglishOrRomanUrdu() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+
+        // A user override is set, but it must NOT reach a fixed-English or Roman-Urdu Model.
+        manager.setLanguageCode("de")
+        manager.switchTo(english)
+        manager.transcribe("/data/audio/a.wav")
+        assertNull(engine.transcribeCalls.last().third)
+
+        manager.switchTo(romanUrdu)
+        manager.transcribe("/data/audio/b.wav")
+        assertNull(engine.transcribeCalls.last().third)
+    }
+
+    @Test
+    fun blankLanguageMeansAuto() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+        val multilingual = Model(id = "multilingual-tiny", fileName = "ggml-tiny.bin", languageMode = LanguageMode.Auto)
+
+        manager.switchTo(multilingual)
+        manager.setLanguageCode("")
+        manager.transcribe("/data/audio/a.wav")
+
+        val (_, _, lang) = engine.transcribeCalls.single()
+        assertNull(lang)
     }
 
     @Test

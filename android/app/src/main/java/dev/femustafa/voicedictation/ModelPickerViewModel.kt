@@ -26,7 +26,10 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         data object Ready : DownloadState
     }
 
-    private val baseDir: File = application.filesDir
+    private val baseDir: File = getApplication<Application>().filesDir
+    private val app: VoiceDictationApp
+        get() = getApplication()
+
     private val downloader = ModelDownloader(baseDir)
 
     private val _entries = MutableStateFlow(ModelCatalog.models.map { entry ->
@@ -36,6 +39,13 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _selectedId = MutableStateFlow(defaultOrPersistedId())
     val selectedId: StateFlow<String> = _selectedId.asStateFlow()
+
+    /** The user's app-level language selection (persisted; null = auto-detect). */
+    val languageCode: StateFlow<String?> = app.whisper.languageCode
+
+    fun setLanguageCode(code: String?) {
+        app.setLanguageCode(code)
+    }
 
     private fun initialState(entry: CatalogEntry): DownloadState =
         if (File(baseDir, entry.model.fileName).exists()) DownloadState.Ready else DownloadState.NotDownloaded
@@ -50,6 +60,7 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
     suspend fun select(entry: CatalogEntry, manager: WhisperManager) {
         if (!File(baseDir, entry.model.fileName).exists()) return // must download first
         _selectedId.value = entry.model.id
+        app.setSelectedModelId(entry.model.id)
         manager.switchTo(entry.model)
     }
 
@@ -75,7 +86,11 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun defaultOrPersistedId(): String {
-        val default = ModelCatalog.default
-        return if (File(baseDir, default.model.fileName).exists()) default.model.id else default.model.id
+        // The user's last-selected Model, or the catalog default. If that Model's
+        // file is missing from storage, fall back to the catalog default so the
+        // radio group never preselects a Model that can't be used yet.
+        val intended = app.initialModel()
+        return if (File(baseDir, intended.model.fileName).exists()) intended.model.id
+        else ModelCatalog.default.model.id
     }
 }

@@ -29,6 +29,9 @@ class WhisperManager(
     private val _status = MutableStateFlow<Status>(Status.Idle)
     val status: StateFlow<Status> = _status.asStateFlow()
 
+    private val _languageCode = MutableStateFlow<String?>(null)
+    val languageCode: StateFlow<String?> = _languageCode.asStateFlow()
+
     private var resident: WhisperModelRef? = null
     private var residentModel: Model? = null
 
@@ -46,8 +49,33 @@ class WhisperManager(
         }
     }
 
+    /**
+     * Set the user-picked language code (a whisper-supported code, or null/blank
+     * for auto-detect). Applies only to Models that [Model.canOverrideLanguage];
+     * fixed-English and Roman-Urdu Models always use their declared mode.
+     */
+    fun setLanguageCode(code: String?) {
+        _languageCode.value = code?.takeIf { it.isNotBlank() }
+    }
+
     fun absolutePath(model: Model): String =
         java.io.File(baseDir, model.fileName).absolutePath
+
+    private suspend fun doTranscribe(audioPath: String): String {
+        val model = ensureLoaded() ?: error("no resident model to transcribe")
+        val resident = residentModel!!
+        val languageMode = resident.languageMode
+        // A user code may override only multilingual (non-Roman-Urdu) Models.
+        val language = resident.canOverrideLanguage.takeIf { it }?.let {
+            _languageCode.value
+        }
+        _status.value = Status.Transcribing
+        try {
+            return engine.transcribe(model, audioPath, languageMode, language)
+        } finally {
+            _status.value = Status.Idle
+        }
+    }
 
     /**
      * Transcribe [audioPath] using the resident Model, loading it first if needed.
@@ -57,17 +85,6 @@ class WhisperManager(
      */
     suspend fun transcribe(audioPath: String): String =
         transcriptionMutex.withLock { doTranscribe(audioPath) }
-
-    private suspend fun doTranscribe(audioPath: String): String {
-        val model = ensureLoaded() ?: error("no resident model to transcribe")
-        val languageMode = residentModel!!.languageMode
-        _status.value = Status.Transcribing
-        try {
-            return engine.transcribe(model, audioPath, languageMode)
-        } finally {
-            _status.value = Status.Idle
-        }
-    }
 
     /**
      * Switch the resident Model: unload the current one and load [newModel].
