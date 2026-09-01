@@ -31,14 +31,14 @@ object ModelCatalog {
 
     val models: List<CatalogEntry> = listOf(
         CatalogEntry(
-            model = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.Auto),
+            model = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.RomanUrdu),
             displayName = "Roman-Urdu q4_0",
             sourceUrl = "$RU_HF/ggml-model-q4_0.bin",
             approxSizeMb = 139,
             isDefault = true,
         ),
         CatalogEntry(
-            model = Model(id = "roman-urdu-f16", fileName = "ggml-model-f16.bin", languageMode = LanguageMode.Auto),
+            model = Model(id = "roman-urdu-f16", fileName = "ggml-model-f16.bin", languageMode = LanguageMode.RomanUrdu),
             displayName = "Roman-Urdu full (f16)",
             sourceUrl = "$RU_HF/ggml-model-f16.bin",
             approxSizeMb = 550,

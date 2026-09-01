@@ -168,4 +168,5 @@ private val LanguageMode.label: String
     get() = when (this) {
         LanguageMode.Auto -> "Auto-detect"
         LanguageMode.English -> "English"
+        LanguageMode.RomanUrdu -> "Roman Urdu"
     }

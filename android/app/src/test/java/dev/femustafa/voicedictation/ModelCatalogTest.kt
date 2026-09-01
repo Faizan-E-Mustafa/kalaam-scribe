@@ -20,17 +20,18 @@ class ModelCatalogTest {
         assertEquals("roman-urdu-q4_0", d.model.id)
         assertTrue(d.isDefault)
         assertEquals("ggml-model-q4_0.bin", d.model.fileName)
-        assertEquals(LanguageMode.Auto, d.model.languageMode)
+        assertEquals(LanguageMode.RomanUrdu, d.model.languageMode)
     }
 
     @Test
-    fun romanUrduModelsAreAutoDetectAndHosted() {
+    fun romanUrduModelsUseFixedEnglishAndHosted() {
         val ruQ4 = ModelCatalog.byId("roman-urdu-q4_0")!!
         val ruF16 = ModelCatalog.byId("roman-urdu-f16")!!
 
-        // Roman-Urdu must stay in Roman/Latin script -> auto-detect, never `ur`.
-        assertEquals(LanguageMode.Auto, ruQ4.model.languageMode)
-        assertEquals(LanguageMode.Auto, ruF16.model.languageMode)
+        // Roman-Urdu runs fixed `en` (faster; may leak English on short clips until
+        // the seed-prompt engine build lands). Never `ur` or auto-detect.
+        assertEquals(LanguageMode.RomanUrdu, ruQ4.model.languageMode)
+        assertEquals(LanguageMode.RomanUrdu, ruF16.model.languageMode)
         // Downloadable from the project's Roman-Urdu HuggingFace repo.
         assertNotNull(ruQ4.sourceUrl)
         assertNotNull(ruF16.sourceUrl)

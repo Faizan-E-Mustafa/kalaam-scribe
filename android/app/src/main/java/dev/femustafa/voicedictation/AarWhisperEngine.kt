@@ -46,6 +46,7 @@ class AarWhisperEngine(
         get() = when (this) {
             LanguageMode.Auto -> "auto"
             LanguageMode.English -> "en"
+            LanguageMode.RomanUrdu -> "en"
         }
 
     private companion object {

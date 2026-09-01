@@ -30,8 +30,8 @@ _Avoid_: Auto-insert
 
 **Model**:
 A downloadable ASR model the app uses, described by the model file plus the
-language mode it runs in (auto-detect or a fixed language). A model is selected or
-switched independently of any dictation.
+language mode it runs in (auto-detect, a fixed language, or the Roman-Urdu
+fixed `en` mode). A model is selected or switched independently of any dictation.
 _Avoid_: Engine, variant, STT
 
 **Resident model**:

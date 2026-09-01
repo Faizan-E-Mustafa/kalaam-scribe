@@ -18,7 +18,7 @@ class WhisperManagerTest {
     private val baseDir = File("/tmp/fake-model-dir")
 
     private val english = Model(id = "english-q8", fileName = "ggml-base.en-q8_0.bin", languageMode = LanguageMode.English)
-    private val romanUrdu = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.Auto)
+    private val romanUrdu = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.RomanUrdu)
 
     private class FakeHandle : WhisperModelRef
 
@@ -105,11 +105,11 @@ class WhisperManagerTest {
         // No user override for a fixed-English Model.
         assertNull(lang1)
 
-        // Roman-Urdu (auto) is applied as Auto, never overridden to `ur`.
+        // Roman-Urdu (fixed en) is applied as RomanUrdu, never overridden to `ur`.
         manager.switchTo(romanUrdu)
         manager.transcribe("/data/audio/b.wav")
         val (_, mode2, lang2) = engine.transcribeCalls.last()
-        assertEquals(LanguageMode.Auto, mode2)
+        assertEquals(LanguageMode.RomanUrdu, mode2)
         assertNull(lang2)
     }
 

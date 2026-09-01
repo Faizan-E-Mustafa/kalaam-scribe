@@ -34,9 +34,12 @@ export LD_LIBRARY_PATH="$TORCH_LIB:${LD_LIBRARY_PATH:-}"
 echo "model : $MODEL"
 echo "audio : $AUDIO"
 echo "=== transcription ==="
+# -l en (fixed English) matches the app: skips whisper's language detection pass
+# (~40% faster). May leak English on short clips; the seed prompt that counters
+# this needs the engine-binding build (see issue tracker). Never -l ur.
 "$WHISPER_CLI" \
   -m "$MODEL" \
   -f "$AUDIO" \
-  -l auto \
+  -l en \
   -nt
 echo "=== end ==="

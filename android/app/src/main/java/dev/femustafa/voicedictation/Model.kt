@@ -4,13 +4,17 @@ package dev.femustafa.voicedictation
  * How a [Model] should be transcribed: which language whisper is told to use.
  *
  * Maps to the whisper AAR's `WhisperConfig.language` string:
- * - [Auto] -> `"auto"` (whisper auto-detects). Required for Roman-Urdu so it stays
- *   in Roman/Latin script; do NOT force `ur` (see CONTEXT.md language).
+ * - [Auto] -> `"auto"` (whisper auto-detects).
  * - [English] -> `"en"` (fixed English, faster/more stable for English-only Models).
+ * - [RomanUrdu] -> `"en"` (fixed English). Skips whisper's language-detection pass
+ *   (~40% lower latency) but can leak English output on short clips; the seed
+ *   prompt that counters this needs the engine-binding build (see issue tracker).
+ *   Never `ur`, which leaks native-script tokens (see CONTEXT.md language).
  */
 enum class LanguageMode {
     Auto,
     English,
+    RomanUrdu,
 }
 
 /**
@@ -25,15 +29,15 @@ data class Model(
     /**
      * Whether a user-picked language may override transcription for this Model.
      * Only allows this for multilingual (non-English) Models that are not one of
-     * the Roman-Urdu conversions: Roman-Urdu must stay in Roman/Latin script
-     * (never force `ur`), and English-only Models are fixed `en` (CONTEXT.md
-     * "Model" / language).
+     * the Roman-Urdu conversions: Roman-Urdu runs a fixed `en` (never `ur`, which
+     * leaks native-script tokens; see [LanguageMode.RomanUrdu]), and English-only
+     * Models are fixed `en` (CONTEXT.md "Model" / language).
      */
     val canOverrideLanguage: Boolean
         get() = languageMode == LanguageMode.Auto && !isRomanUrdu(id)
 }
 
-/** The Roman-Urdu conversion Model ids. Their output must stay Roman/Latin (`auto`), never `ur`. */
+/** The Roman-Urdu conversion Model ids. Their output must stay Roman/Latin (`en`), never `ur`. */
 fun isRomanUrdu(modelId: String): Boolean =
     modelId == "roman-urdu-q4_0" || modelId == "roman-urdu-f16"
 

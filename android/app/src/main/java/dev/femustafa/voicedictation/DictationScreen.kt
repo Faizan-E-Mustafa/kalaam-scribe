@@ -146,6 +146,7 @@ fun DictationScreen(
                             val mode = when (m.languageMode) {
                                 LanguageMode.Auto -> "Auto"
                                 LanguageMode.English -> "English"
+                                LanguageMode.RomanUrdu -> "Roman Urdu"
                             }
                             "${m.id} · $mode"
                         } ?: "no model",
