@@ -40,6 +40,16 @@ class ModelTest {
     }
 
     @Test
+    fun dolphinCtcModelsCanOverrideLanguageFlagButIgnoreIt() {
+        // Dolphin CTC is LanguageMode.Auto, so at the Model level the override flag
+        // is on — but the engine ignores the passed language (auto-detect only).
+        for (e in ModelCatalog.dolphinCtcModels) {
+            assertTrue(e.model.canOverrideLanguage)
+            assertEquals(LanguageMode.Auto, e.model.languageMode)
+        }
+    }
+
+    @Test
     fun englishAndRomanUrduCannotOverrideLanguage() {
         val english = Model(id = "english-q8", fileName = "ggml-base.en-q8_0.bin", languageMode = LanguageMode.English)
         val romanUrduQ4 = Model(id = "roman-urdu-q4_0", fileName = "ggml-model-q4_0.bin", languageMode = LanguageMode.RomanUrdu)

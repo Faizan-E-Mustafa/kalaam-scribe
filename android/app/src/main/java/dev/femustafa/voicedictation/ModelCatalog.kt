@@ -7,18 +7,26 @@ package dev.femustafa.voicedictation
  *
  * - [ggmlModels] — quantized whisper.cpp GGML `.bin` models (q4_0, q8_0, q5_1…),
  *   loaded by [AarWhisperEngine].
- * - [onnxModels] — sherpa-onnx ONNX models. Organized by ONNX model identity
- *   (`tiny`, `tiny.en`, `base.en`, `small`), each offered in two precision tiers:
- *   [ModelPrecision.FP32] (full) and [ModelPrecision.INT8] (quantized), loaded by
- *   [SherpaWhisperEngine]. Quantization is a GGML concept on the GGML side; on the
- *   ONNX side we offer int8 as a distinct tier.
+ * - [onnxModels] — sherpa-onnx Whisper ONNX models. Organized by ONNX model
+ *   identity (`tiny`, `tiny.en`, `base.en`, `small`), each offered in two precision
+ *   tiers: [ModelPrecision.FP32] (full) and [ModelPrecision.INT8] (quantized),
+ *   loaded by [SherpaWhisperEngine]. Quantization is a GGML concept on the GGML
+ *   side; on the ONNX side we offer int8 as a distinct tier.
+ * - [dolphinCtcModels] — Dolphin CTC multilingual models (DataoceanAI), a separate
+ *   ONNX model family from Whisper that supports 40+ Eastern languages including
+ *   Urdu. Loaded by [DolphinCtcEngine] via sherpa-onnx's `OfflineDolphinModelConfig`.
+ *   Files are a single `model.onnx`/`model.int8.onnx` + `tokens.txt` (no
+ *   encoder/decoder split). sherpa-onnx auto-detects the language, so these are all
+ *   [LanguageMode.Auto] and the language setting is ignored.
  *
  * Sources:
  * - Roman-Urdu are conversions of `cheetos18/whisper-small-roman-urdu` hosted on
  *   the project's own HuggingFace repo (see [RU_HF]). GGML-only; no ONNX export.
  * - GGML English/multilingual from `ggerganov/whisper.cpp` HuggingFace repo.
- * - ONNX from `csukuangfj/sherpa-onnx-whisper-*` HuggingFace repos (fp32 `.onnx`
- *   and int8 `.int8.onnx` files).
+ * - ONNX Whisper from `csukuangfj/sherpa-onnx-whisper-*` HuggingFace repos (fp32
+ *   `.onnx` and int8 `.int8.onnx` files).
+ * - Dolphin CTC from `csukuangfj/sherpa-onnx-dolphin-*-ctc-multi-lang*` HuggingFace
+ *   repos (`model.onnx`/`model.int8.onnx` + `tokens.txt` files).
  */
 data class CatalogEntry(
     /** The domain [Model] this entry selects (id, fileName, languageMode). */
@@ -46,6 +54,16 @@ object ModelCatalog {
     const val SHERPA_ONNX_TINY_EN = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/main"
     const val SHERPA_ONNX_BASE_EN = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base.en/resolve/main"
     const val SHERPA_ONNX_SMALL = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main"
+
+    /** Dolphin CTC multilingual model repos (one per size/precision). */
+    const val SHERPA_ONNX_DOLPHIN_BASE =
+        "https://huggingface.co/csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-2025-04-02/resolve/main"
+    const val SHERPA_ONNX_DOLPHIN_BASE_INT8 =
+        "https://huggingface.co/csukuangfj/sherpa-onnx-dolphin-base-ctc-multi-lang-int8-2025-04-02/resolve/main"
+    const val SHERPA_ONNX_DOLPHIN_SMALL =
+        "https://huggingface.co/csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-2025-04-02/resolve/main"
+    const val SHERPA_ONNX_DOLPHIN_SMALL_INT8 =
+        "https://huggingface.co/csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02/resolve/main"
 
     /** GGML (whisper.cpp) catalog: quantized `.bin` models. */
     val ggmlModels: List<CatalogEntry> = listOf(
@@ -207,6 +225,63 @@ object ModelCatalog {
         ),
     )
 
+    /**
+     * Dolphin CTC multilingual catalog (DataoceanAI). Each size is offered in two
+     * precision tiers like Whisper, but the files are a single `model.onnx` /
+     * `model.int8.onnx` plus `tokens.txt` (no encoder/decoder split). The fileName
+     * is the model file; the tokens file is derived as `<id>-tokens.txt` by
+     * [DolphinCtcEngine]/[ModelDownloader].
+     */
+    val dolphinCtcModels: List<CatalogEntry> = listOf(
+        dolphinCtc(
+            id = "dolphin-base-int8",
+            displayName = "Dolphin base · int8",
+            precision = ModelPrecision.INT8,
+            modelUrl = "$SHERPA_ONNX_DOLPHIN_BASE_INT8/model.int8.onnx",
+            approxSizeMb = 99,
+        ),
+        dolphinCtc(
+            id = "dolphin-base-fp32",
+            displayName = "Dolphin base · fp32",
+            precision = ModelPrecision.FP32,
+            modelUrl = "$SHERPA_ONNX_DOLPHIN_BASE/model.onnx",
+            approxSizeMb = 303,
+        ),
+        dolphinCtc(
+            id = "dolphin-small-int8",
+            displayName = "Dolphin small · int8",
+            precision = ModelPrecision.INT8,
+            modelUrl = "$SHERPA_ONNX_DOLPHIN_SMALL_INT8/model.int8.onnx",
+            approxSizeMb = 239,
+        ),
+        dolphinCtc(
+            id = "dolphin-small-fp32",
+            displayName = "Dolphin small · fp32",
+            precision = ModelPrecision.FP32,
+            modelUrl = "$SHERPA_ONNX_DOLPHIN_SMALL/model.onnx",
+            approxSizeMb = 783,
+        ),
+    )
+
+    /** Build one Dolphin CTC [CatalogEntry] with a unique model + tokens filename. */
+    private fun dolphinCtc(
+        id: String,
+        displayName: String,
+        precision: ModelPrecision,
+        modelUrl: String,
+        approxSizeMb: Long,
+    ): CatalogEntry = CatalogEntry(
+        // Dolphin auto-detects language in sherpa-onnx, so it is always Auto and
+        // the user language selection is not applied (the engine ignores it).
+        model = Model(id = id, fileName = "$id-model.onnx", languageMode = LanguageMode.Auto),
+        displayName = displayName,
+        sourceUrl = null,
+        onnxSourceUrl = modelUrl,
+        approxSizeMb = approxSizeMb,
+        isDefault = false,
+        precision = precision,
+    )
+
     /** Build one ONNX [CatalogEntry] with its tier-correct encoder filename. */
     private fun onnx(
         id: String,
@@ -233,7 +308,15 @@ object ModelCatalog {
     val default: CatalogEntry
         get() = ggmlModels.first { it.isDefault }
 
-    /** Look up by model id across both catalogs. */
+    /** Look up by model id across all three catalogs. */
     fun byId(id: String): CatalogEntry? =
-        (ggmlModels + onnxModels).firstOrNull { it.model.id == id }
+        (ggmlModels + onnxModels + dolphinCtcModels).firstOrNull { it.model.id == id }
+
+    /** Whether [entry] is a Dolphin CTC model (loaded by [DolphinCtcEngine]). */
+    fun isDolphinCtc(entry: CatalogEntry): Boolean =
+        entry in dolphinCtcModels
+
+    /** Whether the model file [fileName] belongs to a Dolphin CTC catalog entry. */
+    fun isDolphinCtcFileName(fileName: String): Boolean =
+        dolphinCtcModels.any { it.model.fileName == fileName }
 }

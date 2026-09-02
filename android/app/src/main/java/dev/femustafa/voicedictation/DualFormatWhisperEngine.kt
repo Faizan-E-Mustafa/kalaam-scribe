@@ -5,18 +5,19 @@ import android.util.Log
 import dev.femustafa.voicedictation.WhisperEngine.*
 
 /**
- * [WhisperEngine] that dispatches to one of two backends based on the app-wide
- * model-file [ModelFormat] chosen in settings:
+ * [WhisperEngine] that dispatches to one of several backends:
  *  - [ModelFormat.GGML] → [AarWhisperEngine] (whisper.cpp .bin files)
- *  - [ModelFormat.ONNX] → [SherpaWhisperEngine] (sherpa-onnx .onnx + .tokens files)
+ *  - [ModelFormat.ONNX] → [SherpaWhisperEngine] (sherpa-onnx Whisper .onnx + .tokens)
+ *  - Dolphin CTC → [DolphinCtcEngine] (sherpa-onnx OfflineDolphinModelConfig)
  *
  * Lets a user choose between GGML and ONNX for the same underlying Whisper model
  * and have both work (Ticket 21). The chosen format is read at load time from
- * [VoiceDictationApp.modelFormat], so switching format + re-selecting a model
- * reloads it with the matching backend.
+ * [VoiceDictationApp.modelFormat] for Whisper models, so switching format +
+ * re-selecting a model reloads it with the matching backend. Dolphin CTC models
+ * are always routed to [DolphinCtcEngine] regardless of the Whisper format.
  *
- * The two backends return different, unrelated handle types, so this class wraps
- * every handle with its own [DualModelRef] carrying the backend format; that lets
+ * The backends return different, unrelated handle types, so this class wraps every
+ * handle with its own [DualModelRef] carrying the backend; that lets
  * [transcribe]/[release] route the call to exactly the backend that owns it.
  */
 class DualFormatWhisperEngine(
@@ -24,12 +25,13 @@ class DualFormatWhisperEngine(
 ) : WhisperEngine {
 
     private class DualModelRef(
-        val format: ModelFormat,
+        val format: ModelFormat?,
         val delegate: WhisperModelRef,
     ) : WhisperModelRef
 
     private val ggmlEngine = AarWhisperEngine(context)
     private val onnxEngine = SherpaWhisperEngine(context)
+    private val dolphinCtcEngine = DolphinCtcEngine(context)
 
     private fun engineFor(format: ModelFormat): WhisperEngine = when (format) {
         ModelFormat.GGML -> ggmlEngine
@@ -41,6 +43,13 @@ class DualFormatWhisperEngine(
         VoiceDictationApp.from(context).modelFormat
 
     override suspend fun load(modelPath: String): WhisperModelRef {
+        // Dolphin CTC models load through their own engine, independent of the
+        // user's Whisper GGML/ONNX format choice.
+        if (ModelCatalog.isDolphinCtcFileName(modelPath.substringAfterLast('/'))) {
+            Log.i(TAG, "loading Dolphin CTC model: $modelPath")
+            val delegate = dolphinCtcEngine.load(modelPath)
+            return DualModelRef(format = null, delegate)
+        }
         val format = currentFormat()
         Log.i(TAG, "loading model with format $format: $modelPath")
         val delegate = engineFor(format).load(modelPath)
@@ -55,11 +64,19 @@ class DualFormatWhisperEngine(
     ): String {
         val real = model as? DualModelRef
             ?: throw IllegalArgumentException("unexpected model handle")
+        if (real.format == null) {
+            return dolphinCtcEngine.transcribe(real.delegate, audioPath, languageMode, language)
+        }
         return engineFor(real.format).transcribe(real.delegate, audioPath, languageMode, language)
     }
 
     override fun release(model: WhisperModelRef) {
         val real = model as? DualModelRef ?: return
+        if (real.format == null) {
+            dolphinCtcEngine.release(real.delegate)
+            Log.i(TAG, "released Dolphin CTC model")
+            return
+        }
         engineFor(real.format).release(real.delegate)
         Log.i(TAG, "released model (format ${real.format})")
     }

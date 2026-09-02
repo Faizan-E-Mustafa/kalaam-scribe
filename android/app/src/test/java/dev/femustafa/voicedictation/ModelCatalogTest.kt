@@ -30,6 +30,44 @@ class ModelCatalogTest {
     }
 
     @Test
+    fun dolphinCtcCatalogHasTwoSizesInTwoPrecisionTiers() {
+        // 2 Dolphin CTC sizes (base, small) × 2 tiers (fp32, int8).
+        assertEquals(4, ModelCatalog.dolphinCtcModels.size)
+        assertTrue(ModelCatalog.dolphinCtcModels.all { it.precision != null })
+        val ids = ModelCatalog.dolphinCtcModels.map { it.model.id }
+        for (size in listOf("base", "small")) {
+            assertTrue("missing fp32 for $size", ids.contains("dolphin-$size-fp32"))
+            assertTrue("missing int8 for $size", ids.contains("dolphin-$size-int8"))
+        }
+    }
+
+    @Test
+    fun dolphinCtcModelsUseAutoLanguageAndSingleModelFile() {
+        for (e in ModelCatalog.dolphinCtcModels) {
+            // Dolphin auto-detects language; no language override applies.
+            assertEquals(LanguageMode.Auto, e.model.languageMode)
+            assertTrue(e.model.canOverrideLanguage)
+            // It's a single model.onnx + derived tokens file (no encoder/decoder).
+            assertTrue(e.model.fileName.endsWith("-model.onnx"))
+            assertEquals(DolphinCtcEngine.dolphinTokensName(e), "${e.model.id}-tokens.txt")
+            // ONNX-hosted, no GGML source.
+            assertNotNull(e.onnxSourceUrl)
+            assertNull(e.sourceUrl)
+            assertTrue(e.onnxSourceUrl!!.endsWith("model.onnx") || e.onnxSourceUrl!!.endsWith("model.int8.onnx"))
+        }
+    }
+
+    @Test
+    fun dolphinCtcEntriesRouteToDolphinEngineAndCatalog() {
+        for (e in ModelCatalog.dolphinCtcModels) {
+            assertTrue(ModelCatalog.isDolphinCtc(e))
+            assertTrue(ModelCatalog.isDolphinCtcFileName(e.model.fileName))
+            // byId resolves them across all catalogs.
+            assertEquals(e.model.id, ModelCatalog.byId(e.model.id)!!.model.id)
+        }
+    }
+
+    @Test
     fun defaultIsRomanUrduQ4() {
         val d = ModelCatalog.default
         assertEquals("roman-urdu-q4_0", d.model.id)
@@ -108,7 +146,7 @@ class ModelCatalogTest {
 
     @Test
     fun everyEntryHasUniqueId() {
-        val all = ModelCatalog.ggmlModels + ModelCatalog.onnxModels
+        val all = ModelCatalog.ggmlModels + ModelCatalog.onnxModels + ModelCatalog.dolphinCtcModels
         val ids = all.map { it.model.id }.toSet()
         assertEquals(all.size, ids.size)
     }
