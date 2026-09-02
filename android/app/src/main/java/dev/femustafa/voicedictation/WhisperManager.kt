@@ -97,6 +97,9 @@ class WhisperManager(
     suspend fun switchTo(newModel: Model) {
         transcriptionMutex.withLock {
             mutation.withLock {
+                // Skip the expensive reload when the requested model is already
+                // the resident one (e.g. the user re-taps the selected row).
+                if (residentModel?.id == newModel.id && resident != null) return
                 _status.value = Status.Loading
                 try {
                     unloadLocked()

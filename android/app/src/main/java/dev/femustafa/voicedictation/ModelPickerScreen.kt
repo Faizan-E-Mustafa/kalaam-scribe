@@ -45,6 +45,7 @@ fun ModelPickerScreen(
 ) {
     val state by viewModel.state.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
+    val loadingId by viewModel.loadingId.collectAsState()
     val languageCode by viewModel.languageCode.collectAsState()
     val format by viewModel.modelFormat.collectAsState()
 
@@ -79,6 +80,7 @@ fun ModelPickerScreen(
                     dlState = dlState,
                     format = format,
                     selected = entry.model.id == selectedId,
+                    loading = entry.model.id == loadingId,
                     onSelect = { onSelect(entry) },
                     onDownload = { onDownload(entry) },
                 )
@@ -175,6 +177,7 @@ private fun ModelRow(
     dlState: ModelPickerViewModel.DownloadState,
     format: ModelFormat,
     selected: Boolean,
+    loading: Boolean,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
 ) {
@@ -186,18 +189,21 @@ private fun ModelRow(
         if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
         if (entry.isDefault) append(" · default")
     }
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = onSelect)
-        Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
-            Text(text = entry.displayName, style = MaterialTheme.typography.bodyLarge)
-            Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            when (dlState) {
-                is ModelPickerViewModel.DownloadState.Downloading -> {
-                    LinearProgressIndicator(progress = { dlState.progress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+Row(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(selected = selected, onClick = onSelect)
+            Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                Text(text = entry.displayName, style = MaterialTheme.typography.bodyLarge)
+                Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (loading) {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
                 }
+                when (dlState) {
+                    is ModelPickerViewModel.DownloadState.Downloading -> {
+                        LinearProgressIndicator(progress = { dlState.progress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
+                    }
                 is ModelPickerViewModel.DownloadState.Failed -> {
                     Text("Download failed: ${dlState.message}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                 }

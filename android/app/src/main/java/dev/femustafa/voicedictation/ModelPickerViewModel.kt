@@ -4,6 +4,7 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,6 +53,13 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
     private val _selectedId = MutableStateFlow(defaultOrPersistedId())
     val selectedId: StateFlow<String> = _selectedId.asStateFlow()
 
+    /** The id of the model currently loading into memory (or null). */
+    private val _loadingId = MutableStateFlow<String?>(null)
+    val loadingId: StateFlow<String?> = _loadingId.asStateFlow()
+
+    /** The in-flight model-load job, cancelled when the user picks a different model. */
+    private var _loadJob: Job? = null
+
     /** The user's app-level language selection (persisted; null = auto-detect). */
     val languageCode: StateFlow<String?> = app.whisper.languageCode
 
@@ -78,11 +86,27 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    suspend fun select(entry: CatalogEntry, manager: WhisperManager) {
+    fun select(entry: CatalogEntry, manager: WhisperManager) {
         if (!downloader.isDownloaded(entry, app.modelFormat)) return // must download first
         _selectedId.value = entry.model.id
         app.setSelectedModelId(entry.model.id)
-        manager.switchTo(entry.model)
+        // Show the row as selected immediately, then load the model into memory
+        // in the background so transcription can use it. Loading is cancelled if
+        // the user picks a different model before it finishes.
+        _loadJob?.cancel()
+        // Load the model on a background dispatcher: constructing the sherpa-onnx
+        // OfflineRecognizer (or the GGML engine) loads the model into memory and
+        // blocks the calling thread. Running it on the main thread would freeze
+        // the UI (and make the radio toggle appear to lag). Use the IO pool so the
+        // heavy JNI/native load never touches the main thread.
+        _loadJob = viewModelScope.launch(Dispatchers.IO) {
+            _loadingId.value = entry.model.id
+            try {
+                manager.switchTo(entry.model)
+            } finally {
+                _loadingId.value = null
+            }
+        }
     }
 
     fun download(entry: CatalogEntry) {

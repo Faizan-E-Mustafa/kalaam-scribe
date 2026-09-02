@@ -3,6 +3,8 @@ package dev.femustafa.voicedictation
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.async
 
 /**
  * Downloads a [CatalogEntry]'s model file for a chosen [ModelFormat].
@@ -203,11 +205,15 @@ class ModelDownloader(
     /**
      * Ensure the decoder and tokens siblings exist for [entry]'s ONNX model.
      * Both are required by sherpa-onnx (loading without them fails), so a missing
-     * sibling is reported as a failure rather than silently ignored.
+     * sibling is reported as a failure rather than silently ignored. The two
+     * siblings are downloaded concurrently to cut total download time.
      */
-    private fun ensureSiblings(entry: CatalogEntry, encoderUrl: String) {
-        val decoderGot = ensureSibling(encoderUrl, "decoder", onnxDecoderName(entry))
-        val tokensGot = ensureSibling(encoderUrl, "tokens", onnxTokensName(entry))
+    private suspend fun ensureSiblings(entry: CatalogEntry, encoderUrl: String) {
+        val (decoderGot, tokensGot) = coroutineScope {
+            val decoderDeferred = async { ensureSibling(encoderUrl, "decoder", onnxDecoderName(entry)) }
+            val tokensDeferred = async { ensureSibling(encoderUrl, "tokens", onnxTokensName(entry)) }
+            decoderDeferred.await() to tokensDeferred.await()
+        }
         if (!(decoderGot && tokensGot)) {
             Log.w(TAG, "ONNX sibling download incomplete for ${entry.model.id}")
         }

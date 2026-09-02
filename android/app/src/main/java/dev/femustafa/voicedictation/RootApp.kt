@@ -4,11 +4,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
-import kotlinx.coroutines.launch
 
 /**
  * Top-level composable: owns the [WhisperManager] (production wiring: AAR engine +
@@ -18,7 +16,6 @@ import kotlinx.coroutines.launch
 @Composable
 fun RootApp() {
     val context = LocalContext.current.applicationContext
-    val scope = rememberCoroutineScope()
     val manager = VoiceDictationApp.from(context).whisper
     val pickerViewModel: ModelPickerViewModel = viewModel()
     val dictationViewModel: DictationViewModel = viewModel()
@@ -30,7 +27,7 @@ fun RootApp() {
         ModelPickerScreen(
             viewModel = pickerViewModel,
             onSelect = { entry ->
-                scope.launch { pickerViewModel.select(entry, manager) }
+                pickerViewModel.select(entry, manager)
             },
             onDownload = { entry -> pickerViewModel.download(entry) },
             onClose = { showPicker = false },
