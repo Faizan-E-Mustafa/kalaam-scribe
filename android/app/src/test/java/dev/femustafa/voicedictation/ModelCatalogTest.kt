@@ -16,14 +16,14 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun onnxCatalogHasFourIdentitiesInTwoPrecisionTiers() {
-        // 4 ONNX model identities (tiny, tiny.en, base.en, small) × 2 tiers (fp32, int8).
-        assertEquals(8, ModelCatalog.onnxModels.size)
+    fun onnxCatalogHasFiveIdentitiesInTwoPrecisionTiers() {
+        // 5 ONNX model identities (tiny, tiny.en, base.en, base, small) × 2 tiers (fp32, int8).
+        assertEquals(10, ModelCatalog.onnxModels.size)
         assertEquals(ModelPrecision.FP32, ModelCatalog.onnxModels.first().precision)
         assertTrue(ModelCatalog.onnxModels.all { it.precision != null })
         // Each identity is offered in both fp32 and int8.
         val ids = ModelCatalog.onnxModels.map { it.model.id }
-        for (identity in listOf("tiny", "tiny.en", "base.en", "small")) {
+        for (identity in listOf("tiny", "tiny.en", "base.en", "base", "small")) {
             assertTrue("missing fp32 for $identity", ids.contains("$identity-fp32"))
             assertTrue("missing int8 for $identity", ids.contains("$identity-int8"))
         }

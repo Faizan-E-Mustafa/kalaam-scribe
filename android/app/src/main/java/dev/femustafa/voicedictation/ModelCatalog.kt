@@ -53,6 +53,7 @@ object ModelCatalog {
     const val SHERPA_ONNX_TINY = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny/resolve/main"
     const val SHERPA_ONNX_TINY_EN = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-tiny.en/resolve/main"
     const val SHERPA_ONNX_BASE_EN = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base.en/resolve/main"
+    const val SHERPA_ONNX_BASE = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base/resolve/main"
     const val SHERPA_ONNX_SMALL = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main"
 
     /** Dolphin CTC multilingual model repos (one per size/precision). */
@@ -170,6 +171,23 @@ object ModelCatalog {
             languageMode = LanguageMode.English,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_BASE_EN/base.en-encoder.int8.onnx",
+            approxSizeMb = 160,
+        ),
+        // base (multilingual) — fp32 + int8
+        onnx(
+            id = "base-fp32",
+            displayName = "Multilingual base",
+            languageMode = LanguageMode.Auto,
+            precision = ModelPrecision.FP32,
+            encoderUrl = "$SHERPA_ONNX_BASE/base-encoder.onnx",
+            approxSizeMb = 291,
+        ),
+        onnx(
+            id = "base-int8",
+            displayName = "Multilingual base (int8)",
+            languageMode = LanguageMode.Auto,
+            precision = ModelPrecision.INT8,
+            encoderUrl = "$SHERPA_ONNX_BASE/base-encoder.int8.onnx",
             approxSizeMb = 160,
         ),
         // tiny.en (English) — fp32 + int8

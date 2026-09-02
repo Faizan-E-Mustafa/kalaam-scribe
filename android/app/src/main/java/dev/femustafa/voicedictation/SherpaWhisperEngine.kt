@@ -46,18 +46,12 @@ class SherpaWhisperEngine(
         Log.i(TAG, "loading sherpa-onnx model: $modelPath")
 
         if (modelEntry != null) {
-            // Build ONNX model config with encoder/decoder/tokens paths.
+            // Build ONNX model config with encoder/decoder/tokens paths. We do NOT
+            // bake a language in here: the language is applied per-transcription in
+            // [applyLanguage] so only the user-selected code for multilingual models
+            // reaches the recognizer. An empty language means auto-detect.
             val whisperConfig = OfflineWhisperModelConfig()
-            // Language: whisper needs a concrete language code ("en") or empty for
-            // auto-detect. A literal "auto" is not accepted by sherpa-onnx and makes
-            // greedy-search decode abort ("Invalid language: auto"), so for
-            // multilingual models we leave it empty to trigger auto-detection.
-            val language = when (modelEntry.model.languageMode) {
-                LanguageMode.English -> "en"
-                LanguageMode.RomanUrdu -> "en"
-                LanguageMode.Auto -> ""
-            }
-            whisperConfig.language = language
+            whisperConfig.language = ""
             whisperConfig.task = "transcribe"
 
             // Derive the ONNX encoder/decoder/tokens file paths from the model entry.
@@ -131,10 +125,11 @@ class SherpaWhisperEngine(
 
         // Apply the per-transcription language via recognizer.setConfig(), which
         // is the officially supported way to change Whisper language at runtime
-        // (k2-fsa/sherpa-onnx#1116). A user-picked whisper language code (e.g. "ur")
-        // pins the decode so auto-detection can't misguess it (e.g. Urdu -> Hindi);
-        // "en" keeps multilingual output in Latin script for English/RomanUrdu modes.
-        applyLanguage(real, language ?: languageMode.streamLanguage)
+        // (k2-fsa/sherpa-onnx#1116). We use the user-selected code only for
+        // multilingual (auto-detect) Models; fixed-English and Roman-Urdu Models
+        // never take an override (their output must stay in Latin script). When no
+        // language is selected we pass "" so Whisper auto-detects.
+        applyLanguage(real, resolveLanguage(languageMode, language))
 
         val stream = real.recognizer.createStream()
         try {
@@ -172,10 +167,16 @@ class SherpaWhisperEngine(
         real.recognizer.setConfig(recognizerConfig)
     }
 
-    /** How a [LanguageMode] maps to a per-transcription language code (empty = auto-detect). */
-    private val LanguageMode.streamLanguage: String
-        get() = when (this) {
-            LanguageMode.Auto -> ""
+    /**
+     * Resolve the whisper language code to use for a transcription. Only
+     * multilingual ([LanguageMode.Auto]) Models may take the user-selected
+     * [language]; fixed-English and Roman-Urdu Models always resolve to "en" so
+     * their output stays in Latin script and never takes an override. A missing
+     * [language] on a multilingual Model resolves to "" (auto-detect).
+     */
+    private fun resolveLanguage(languageMode: LanguageMode, language: String?): String =
+        when (languageMode) {
+            LanguageMode.Auto -> language ?: ""
             LanguageMode.English -> "en"
             LanguageMode.RomanUrdu -> "en"
         }
