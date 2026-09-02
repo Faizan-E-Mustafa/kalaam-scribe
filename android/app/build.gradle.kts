@@ -63,6 +63,8 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.material.icons)
 
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.13.5")
+
     implementation(libs.whisper.android)
 
     debugImplementation(libs.androidx.ui.tooling)

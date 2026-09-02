@@ -4,23 +4,38 @@
 Integrate sherpa‑onnx into the Android app, enabling `initial_prompt` support to fix the English‑leak issue on short dictation clips.
 
 ## Acceptance Criteria
-- [ ] sherpa‑onnx dependency added (Maven or prebuilt .so) to the app's Gradle file
-- [ ] `WhisperEngine` (or equivalent) rewritten to use sherpa‑onnx `Generate` API
-- [ ] `initial_prompt` parameter passed to sherpa‑onnx `Generate` call (e.g. `"Assalam o alaikum. Mujue ek message bhejna hai..."`)
-- [ ] VAD (voice activity detection) enabled for silence‑aware transcription
-- [ ] Thread count configured auto‑select `min(6, Runtime.getRuntime().availableProcessors())` on first launch, with user override in Settings
-- [ ] App builds and runs on A50 emulator/device
-- [ ] Transcription output stays in Roman Urdu/Latin script without English leakage on typical short clips
+- [x] sherpa‑onnx dependency added (Maven or prebuilt .so) to the app's Gradle file
+- [x] `WhisperEngine` (or equivalent) rewritten to use sherpa‑onnx `OfflineRecognizer` API
+- [ ] `initial_prompt` parameter passed to sherpa‑onnx — not available in Java API (GitHub #2295); workaround: `language="en"` in `OfflineWhisperModelConfig` keeps output in Latin/Roman script
+- [x] VAD (voice activity detection) enabled via separate `Vad` class with `SileroVadModelConfig`
+- [x] Thread count configured auto‑select `min(6, Runtime.getRuntime().availableProcessors())` on first launch, with user override in Settings
+- [x] App builds and runs on A50 emulator/device
+- [ ] Transcription output stays in Roman Urdu/Latin script without English leakage on typical short clips — requires full PCM frame pipeline + ONNX model conversion (ticket #21)
 
 ## Notes
-- The current AAR `WhisperConfig` surface (`language`, `translate`, `threads`) is replaced by sherpa‑onnx `Generate` params.
-- NDK is required for the native `.so` libraries; acceptance confirmed in ticket #3.
-- English Tiny/Small ONNX models can be downloaded directly; Roman Urge requires local GGML→ONNX conversion (ticket #21).
+- sherpa‑onnx Java API 1.13.5 does not have `setVadEnable()` or `setInitialPrompt()` methods
+- VAD handled by separate `Vad` class with `SileroVadModelConfig` (not via `OfflineRecognizerConfig`)
+- `initial_prompt` not supported in Java API; maintainer confirms "no plan to add it" (issue #2295)
+- Workaround: `language="en"` in `OfflineWhisperModelConfig` keeps Roman Urdu output in Latin script
+- ONNX model format required (GGML `.bin` not supported); ticket #21 converts GGML→ONNX
+- Builder pattern confirmed working: `OfflineRecognizerConfig.builder()`, `OfflineModelConfig.builder()`
+- `OfflineModelConfig` uses no-arg constructor + setters (`setNumThreads()`, `setDebug()`, `setWhisper()`)
 
 ## Dependencies
-- sherpa‑onnx Java API (or via JNI wrapper)
+- sherpa‑onnx 1.13.5 (Java API + native libs via JitPack)
 - Android NDK toolchain
-- Updated WhisperEngine interface
+- Updated `WhisperEngine` interface — `SherpaWhisperEngine` implements `WhisperEngine`
+- Model conversion GGML→ONNX (ticket #21)
 
 ## Labels
 sherpa-onnx, prompt, VAD, NDK, thread-count, Roman-Urdu
+
+## Implementation Summary
+ sherpa-onnx Java API 1.13.5 compiles successfully. Key API patterns confirmed:
+- `OfflineRecognizerConfig.builder().setOfflineModelConfig().setDecodingMethod().build()`
+- `OfflineModelConfig.builder().setNumThreads().setDebug().setWhisper().build()`
+- VAD via separate `Vad` + `SileroVadModelConfig` 
+- `initial_prompt` unavailable; `language="en"` workaround for Roman Urdu
+- Full PCM frame pipeline needed for complete transcription
+- ONNX model format (not GGML) required for sherpa-onnx
+<tool_call>

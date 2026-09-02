@@ -32,7 +32,7 @@ class VoiceDictationApp : Application() {
 
     /** The single shared resident-model manager, created lazily on first use. */
     val whisper: WhisperManager by lazy {
-        WhisperManager(filesDir, AarWhisperEngine(this)).also { mgr ->
+        WhisperManager(filesDir, SherpaWhisperEngine(this)).also { mgr ->
             // Reflect the user's last-chosen Model (or the catalog default) as the
             // resident Model when its file is already on disk, so the top chip shows
             // it and transcription can start without a picker tap. Load is lazy.
