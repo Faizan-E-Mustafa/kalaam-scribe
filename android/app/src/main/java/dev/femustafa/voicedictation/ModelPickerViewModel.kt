@@ -14,8 +14,9 @@ import java.io.File
 /**
  * Backs the model picker. Tracks per-model download state (persisted by checking
  * whether the file already exists in app-private storage), the user's selection,
- * and drives [ModelDownloader]. Selection calls [WhisperManager.switchTo] so the
- * resident model and the picker stay consistent.
+ * the chosen model-file [ModelFormat], and drives [ModelDownloader]. Selection
+ * calls [WhisperManager.switchTo] so the resident model and the picker stay
+ * consistent.
  */
 class ModelPickerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -32,7 +33,18 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
 
     private val downloader = ModelDownloader(baseDir)
 
-    private val _entries = MutableStateFlow(ModelCatalog.models.map { entry ->
+    /** The currently chosen model-file format (GGML or ONNX), persisted app-wide. */
+    val modelFormat: StateFlow<ModelFormat> =
+        MutableStateFlow(app.modelFormat)
+
+    fun setModelFormat(format: ModelFormat) {
+        app.setModelFormat(format)
+        (modelFormat as MutableStateFlow).value = format
+        _selectedId.value = defaultOrPersistedId()
+        refresh()
+    }
+
+    private val _entries = MutableStateFlow(catalogFor(app.modelFormat).map { entry ->
         entry to initialState(entry)
     })
     val state: StateFlow<List<Pair<CatalogEntry, DownloadState>>> = _entries.asStateFlow()
@@ -47,31 +59,38 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         app.setLanguageCode(code)
     }
 
+    /** The [CatalogEntry]s to show for the current format. */
+    private fun catalogFor(format: ModelFormat): List<CatalogEntry> = when (format) {
+        ModelFormat.GGML -> ModelCatalog.ggmlModels
+        ModelFormat.ONNX -> ModelCatalog.onnxModels
+    }
+
+    /** Whether this model has an ONNX build available (Roman-Urdu does not). */
+    fun hasONNX(entry: CatalogEntry): Boolean = entry.onnxSourceUrl != null
+
     private fun initialState(entry: CatalogEntry): DownloadState =
-        if (File(baseDir, entry.model.fileName).exists()) DownloadState.Ready else DownloadState.NotDownloaded
+        if (downloader.isDownloaded(entry, app.modelFormat)) DownloadState.Ready else DownloadState.NotDownloaded
 
     /** Re-scan storage so Ready models are recognised on later launches. */
     fun refresh() {
-        _entries.value = ModelCatalog.models.map { entry ->
+        _entries.value = catalogFor(app.modelFormat).map { entry ->
             entry to initialState(entry)
         }
     }
 
     suspend fun select(entry: CatalogEntry, manager: WhisperManager) {
-        if (!File(baseDir, entry.model.fileName).exists()) return // must download first
+        if (!downloader.isDownloaded(entry, app.modelFormat)) return // must download first
         _selectedId.value = entry.model.id
         app.setSelectedModelId(entry.model.id)
         manager.switchTo(entry.model)
     }
 
     fun download(entry: CatalogEntry) {
-        if (entry.sourceUrl == null) {
-            setState(entry, DownloadState.Failed("Not hosted; copy the file manually into app storage"))
-            return
-        }
+        // Each catalog entry maps to exactly one format download path.
+        val format = entryFormat(entry)
         setState(entry, DownloadState.Downloading(0f))
         viewModelScope.launch(Dispatchers.IO) {
-            val result = downloader.download(entry) { progress ->
+            val result = downloader.download(entry, format) { progress ->
                 setState(entry, DownloadState.Downloading(progress))
             }
             when (result) {
@@ -81,16 +100,35 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    /** The format that [entry] belongs to (on the ONNX catalog vs the GGML catalog). */
+    private fun entryFormat(entry: CatalogEntry): ModelFormat =
+        if (entry.onnxSourceUrl != null) ModelFormat.ONNX else ModelFormat.GGML
+
     private fun setState(entry: CatalogEntry, state: DownloadState) {
         _entries.value = _entries.value.map { (e, s) -> if (e.model.id == entry.model.id) e to state else e to s }
     }
 
+    /**
+     * The model id to highlight as selected. This must belong to the *current
+     * format's* catalog, since GGML and ONNX are fully separate lists. Prefer the
+     * user's persisted selection when it is in the current catalog and already
+     * downloaded; otherwise fall back to the first downloaded entry, else the
+     * format's default.
+     */
     private fun defaultOrPersistedId(): String {
-        // The user's last-selected Model, or the catalog default. If that Model's
-        // file is missing from storage, fall back to the catalog default so the
-        // radio group never preselects a Model that can't be used yet.
-        val intended = app.initialModel()
-        return if (File(baseDir, intended.model.fileName).exists()) intended.model.id
-        else ModelCatalog.default.model.id
+        val catalog = catalogFor(app.modelFormat)
+        val persisted = app.persistedModelId?.let { ModelCatalog.byId(it) }
+        val candidates = buildList {
+            if (persisted != null) add(persisted)
+            addAll(catalog)
+        }
+        // First downloaded entry, preferring the persisted one; else the format default.
+        val fallbackDefault =
+            if (app.modelFormat == ModelFormat.ONNX) onnxDefault() else ModelCatalog.default
+        return (candidates.firstOrNull { it in catalog && downloader.isDownloaded(it, app.modelFormat) } ?: fallbackDefault)
+            .model.id
     }
+
+    /** A sensible ONNX default for the picker's selected highlight. */
+    private fun onnxDefault(): CatalogEntry = ModelCatalog.onnxModels.first { it.model.fileName.endsWith("-encoder.onnx") }
 }

@@ -17,6 +17,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -45,12 +46,22 @@ fun ModelPickerScreen(
     val state by viewModel.state.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
     val languageCode by viewModel.languageCode.collectAsState()
+    val format by viewModel.modelFormat.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Text(text = "Models", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             Button(onClick = onClose) { Text("Done") }
         }
+        // App-level model-file format: GGML (whisper.cpp) or ONNX (sherpa-onnx).
+        FormatSelector(
+            format = format,
+            onSelect = viewModel::setModelFormat,
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+        )
         // App-level language setting: chosen once, persisted, applied to
         // multilingual Models when transcribing.
         LanguagePicker(
@@ -58,16 +69,50 @@ fun ModelPickerScreen(
             onSelect = viewModel::setLanguageCode,
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
         )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(
+            modifier = Modifier.weight(1f).fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             items(state, key = { it.first.model.id }) { (entry, dlState) ->
                 ModelRow(
                     entry = entry,
                     dlState = dlState,
+                    format = format,
                     selected = entry.model.id == selectedId,
                     onSelect = { onSelect(entry) },
                     onDownload = { onDownload(entry) },
                 )
                 HorizontalDivider()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FormatSelector(
+    format: ModelFormat,
+    onSelect: (ModelFormat) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(text = "Format", style = MaterialTheme.typography.bodyLarge)
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ModelFormat.entries.forEach { candidate ->
+                val selected = candidate == format
+                val label = if (selected) "${candidate.name} ✓" else candidate.name
+                if (selected) {
+                    Button(onClick = { onSelect(candidate) }, modifier = Modifier.weight(1f)) {
+                        Text(label)
+                    }
+                } else {
+                    OutlinedButton(onClick = { onSelect(candidate) }, modifier = Modifier.weight(1f)) {
+                        Text(label)
+                    }
+                }
             }
         }
     }
@@ -128,11 +173,15 @@ private fun LanguagePicker(
 private fun ModelRow(
     entry: CatalogEntry,
     dlState: ModelPickerViewModel.DownloadState,
+    format: ModelFormat,
     selected: Boolean,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
 ) {
     val meta = buildString {
+        append(format.name)
+        entry.precision?.let { append(" · ${it.label}") }
+        append(" · ")
         append(entry.model.languageMode.label)
         if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
         if (entry.isDefault) append(" · default")
@@ -158,7 +207,10 @@ private fun ModelRow(
         when (dlState) {
             ModelPickerViewModel.DownloadState.Ready -> Text("Ready", color = MaterialTheme.colorScheme.primary)
             is ModelPickerViewModel.DownloadState.Downloading -> Text("…", style = MaterialTheme.typography.bodySmall)
-            ModelPickerViewModel.DownloadState.NotDownloaded -> Button(onClick = onDownload, enabled = entry.sourceUrl != null) { Text("Download") }
+            ModelPickerViewModel.DownloadState.NotDownloaded -> Button(
+                onClick = onDownload,
+                enabled = entry.sourceUrl != null || entry.onnxSourceUrl != null,
+            ) { Text("Download") }
             is ModelPickerViewModel.DownloadState.Failed -> Button(onClick = onDownload) { Text("Retry") }
         }
     }

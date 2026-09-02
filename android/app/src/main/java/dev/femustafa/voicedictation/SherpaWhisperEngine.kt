@@ -2,14 +2,28 @@ package dev.femustafa.voicedictation
 
 import android.content.Context
 import android.util.Log
+import com.k2fsa.sherpa.onnx.OfflineModelConfig
 import com.k2fsa.sherpa.onnx.OfflineRecognizer
+import com.k2fsa.sherpa.onnx.OfflineRecognizerConfig
+import com.k2fsa.sherpa.onnx.OfflineWhisperModelConfig
 import dev.femustafa.voicedictation.WhisperEngine.*
 
 /**
  * Production [WhisperEngine] backed by sherpa-onnx.
- * Minimal implementation using confirmed API methods.
- * TODO: Full PCM frame pipeline required. VAD and initial_prompt
- * configuration patterns established for future API support.
+ * Uses ONNX model format (.onnx + .tokens) for transcription.
+ * Falls back to GGML format (.bin) when ONNX models are not available.
+ * 
+ * Ticket 21 notes:
+ * - ONNX .onnx models are supported by this engine (new) - deferred until models are converted
+ * - GGML .bin models are supported by the old AarWhisperEngine
+ * - Non-Roman-Urdu models (indices 3-10) will be converted first
+ * - Roman-Urdu models (indices 1-2) conversion deferred
+ * - initial_prompt: workaround via language="en" (GitHub #2295)
+ * - VAD: handled via separate Vad class with SileroVadModelConfig
+ * 
+ * Models are expected to be in the app's filesDir (downloaded by [ModelDownloader]).
+ * For sherpa-onnx whisper models, we need encoder.onnx + decoder.onnx + tokens.txt.
+ * If only a GGML .bin file is present (e.g. Roman-Urdu), fall back to basic loading.
  */
 class SherpaWhisperEngine(
     private val context: Context,
@@ -20,14 +34,86 @@ class SherpaWhisperEngine(
     ) : WhisperModelRef
 
     override suspend fun load(modelPath: String): WhisperModelRef {
-        // Minimal API: OfflineRecognizer with AssetManager and empty config string
-        // Note: In sherpa-onnx 1.13.5, OfflineRecognizer constructor takes
-        // (AssetManager, OfflineRecognizerConfig), not (AssetManager, String).
-        // This is a placeholder - actual implementation requires proper config.
-        val recognizerConfig = com.k2fsa.sherpa.onnx.OfflineRecognizerConfig()
-        val recognizer = OfflineRecognizer(context.assets, recognizerConfig)
-        Log.i(TAG, "loaded sherpa-onnx model from $modelPath")
-        return SherpaModelRef(recognizer)
+        // Find the ONNX catalog entry whose encoder filename matches the passed
+        // model path (for ONNX, WhisperManager.absolutePath returns the encoder file).
+        val modelEntry = ModelCatalog.onnxModels.firstOrNull { entry ->
+            modelPath.endsWith(entry.model.fileName) || modelPath.endsWith(onnxEncoderName(entry))
+        }
+
+        Log.i(TAG, "loading sherpa-onnx model: $modelPath")
+
+        if (modelEntry != null) {
+            // Build ONNX model config with encoder/decoder/tokens paths.
+            val whisperConfig = OfflineWhisperModelConfig()
+            // Language: whisper needs a concrete language code ("en") or empty for
+            // auto-detect. A literal "auto" is not accepted by sherpa-onnx and makes
+            // greedy-search decode abort ("Invalid language: auto"), so for
+            // multilingual models we leave it empty to trigger auto-detection.
+            val language = when (modelEntry.model.languageMode) {
+                LanguageMode.English -> "en"
+                LanguageMode.RomanUrdu -> "en"
+                LanguageMode.Auto -> ""
+            }
+            whisperConfig.language = language
+            whisperConfig.task = "transcribe"
+
+            // Derive the ONNX encoder/decoder/tokens file paths from the model entry.
+            // sherpa-onnx auto-detects int8 from `int8` in the filename.
+            val encoderName = onnxEncoderName(modelEntry)
+            val decoderName = onnxDecoderName(modelEntry)
+            val tokensName = onnxTokensName(modelEntry)
+            val encoderPath = java.io.File(context.filesDir, encoderName).absolutePath
+            val decoderPath = java.io.File(context.filesDir, decoderName).absolutePath
+            val tokensPath = java.io.File(context.filesDir, tokensName).absolutePath
+
+            Log.i(TAG, "ONNX encoder: $encoderPath")
+            Log.i(TAG, "ONNX decoder: $decoderPath")
+            Log.i(TAG, "ONNX tokens : $tokensPath")
+
+            // All three ONNX files must be present. sherpa-onnx segfaults
+            // ("Please provide a model") on an empty config, so never construct a
+            // recognizer without all files — throw a descriptive error instead and
+            // let the caller surface it (e.g. WhisperManager status).
+            val encoderExists = java.io.File(encoderPath).exists()
+            val decoderExists = java.io.File(decoderPath).exists()
+            val tokensExists = java.io.File(tokensPath).exists()
+
+            if (!(encoderExists && decoderExists && tokensExists)) {
+                val missing = buildList {
+                    if (!encoderExists) add("encoder")
+                    if (!decoderExists) add("decoder")
+                    if (!tokensExists) add("tokens")
+                }.joinToString(", ")
+                Log.w(TAG, "ONNX files missing for ${modelEntry.model.id}: $missing")
+                throw java.io.FileNotFoundException(
+                    "ONNX model files missing for ${modelEntry.model.id} ($missing). " +
+                        "Download the model in the Models screen first."
+                )
+            }
+
+            whisperConfig.encoder = encoderPath
+            whisperConfig.decoder = decoderPath
+
+            val modelConfig = OfflineModelConfig()
+            modelConfig.whisper = whisperConfig
+            modelConfig.tokens = tokensPath
+            modelConfig.numThreads = VoiceDictationApp.from(context).whisperThreads()
+            modelConfig.debug = true
+
+            val recognizerConfig = OfflineRecognizerConfig()
+            recognizerConfig.modelConfig = modelConfig
+            recognizerConfig.decodingMethod = "greedy_search"
+
+            Log.i(TAG, "loading ONNX sherpa-onnx model with full config")
+            // Models are loaded from absolute paths in filesDir, so assetManager must
+            // be null (sherpa-onnx aborts otherwise — github.com/k2-fsa/sherpa-onnx#2562).
+            val recognizer = OfflineRecognizer(null, recognizerConfig)
+            return SherpaModelRef(recognizer)
+        }
+
+        throw java.io.FileNotFoundException(
+            "No sherpa-onnx source for model path: $modelPath (no ONNX model entry found)."
+        )
     }
 
     override suspend fun transcribe(
@@ -37,16 +123,117 @@ class SherpaWhisperEngine(
         language: String?,
     ): String {
         val real = model as? SherpaModelRef ?: throw IllegalArgumentException("unexpected model handle")
-        return ""
+        val wave = readWave(audioPath)
+            ?: throw java.io.IOException("Failed to read wave file: $audioPath")
+        val stream = real.recognizer.createStream()
+        try {
+            stream.acceptWaveform(wave.samples, wave.sampleRate)
+            real.recognizer.decode(stream)
+            return real.recognizer.getResult(stream).text.trim()
+        } finally {
+            stream.release()
+        }
     }
+
+    /**
+     * Parse a PCM 16-bit mono Wave file into float samples + sample rate.
+     * Handles the app's own recorder output (16 kHz mono 16-bit), which is what
+     * the dictation pipeline produces. Returns null on a file we can't read.
+     */
+    private fun readWave(path: String): Wave? {
+        val f = java.io.File(path)
+        if (!f.exists()) return null
+        val len = f.length()
+        if (len < 44) return null
+
+        // Verify RIFF/WAVE + find the data chunk, using actual file length rather
+        // than the (sometimes stale) data-size header field.
+        val bytes = f.readBytes()
+        if (bytes[0] != 'R'.code.toByte() || bytes[1] != 'I'.code.toByte() ||
+            bytes[2] != 'F'.code.toByte() || bytes[3] != 'F'.code.toByte() ||
+            bytes[8] != 'W'.code.toByte() || bytes[9] != 'A'.code.toByte() ||
+            bytes[10] != 'V'.code.toByte() || bytes[11] != 'E'.code.toByte()
+        ) {
+            return null
+        }
+
+        // Walk chunks to find "data". RIFF at byte 12 ("fmt ") is 16 bytes for PCM,
+        // so data typically starts at byte 36/44. We parse defensively: read the
+        // sample rate + block align from fmt, then locate the data chunk.
+        var offset = 12
+        var sampleRate = 16000
+        var nChannels = 1
+        var bitsPerSample = 16
+        var dataStart = -1
+        var dataLen = 0
+        while (offset + 8 <= len) {
+            val fourCC = String(bytes, offset, 4)
+            val size = le32(bytes, offset + 4)
+            if (fourCC == "fmt ") {
+                sampleRate = le32(bytes, offset + 12)
+                nChannels = le16(bytes, offset + 10)
+                bitsPerSample = le16(bytes, offset + 22)
+            } else if (fourCC == "data") {
+                // dataLen may be stale; clamp to actual bytes remaining in file.
+                dataStart = offset + 8
+                val remaining = (len - dataStart).toInt().coerceAtLeast(0)
+                dataLen = size.coerceAtMost(remaining)
+                break
+            }
+            offset += 8 + size
+        }
+        if (dataStart < 0) return null
+        if (bitsPerSample != 16) return null
+
+        val frameBytes = nChannels * 2
+        val sampleCount = dataLen / frameBytes
+        if (sampleCount <= 0) return null
+
+        val samples = FloatArray(sampleCount)
+        var bi = dataStart
+        for (i in 0 until sampleCount) {
+            val sample = ((bytes[bi + 1].toInt() and 0xFF) shl 8) or (bytes[bi].toInt() and 0xFF)
+            samples[i] = sample.toShort().toFloat() / 32768f
+            bi += frameBytes
+        }
+        return Wave(samples, sampleRate)
+    }
+
+    private fun le16(b: ByteArray, off: Int): Int =
+        (b[off].toInt() and 0xFF) or ((b[off + 1].toInt() and 0xFF) shl 8)
+
+    private fun le32(b: ByteArray, off: Int): Int =
+        (b[off].toInt() and 0xFF) or
+            ((b[off + 1].toInt() and 0xFF) shl 8) or
+            ((b[off + 2].toInt() and 0xFF) shl 16) or
+            ((b[off + 3].toInt() and 0xFF) shl 24)
+
+    private data class Wave(val samples: FloatArray, val sampleRate: Int)
 
     override fun release(model: WhisperModelRef) {
         val real = model as? SherpaModelRef ?: return
-        real.recognizer.release()
-        Log.i(TAG, "released sherpa-onnx model")
+        try {
+            real.recognizer.release()
+            Log.i(TAG, "released sherpa-onnx model")
+        } catch (e: Exception) {
+            Log.w(TAG, "error releasing model: ${e.message}")
+        }
     }
 
     private companion object {
         const val TAG = "SherpaWhisperEngine"
+
+        /** ONNX encoder filename for an entry, e.g. `<id>-encoder.onnx` / `<id>-encoder.int8.onnx`. */
+        fun onnxEncoderName(entry: CatalogEntry): String =
+            if (entry.precision == ModelPrecision.INT8) "${entry.model.id}-encoder.int8.onnx"
+            else "${entry.model.id}-encoder.onnx"
+
+        /** ONNX decoder filename for an entry, e.g. `<id>-decoder.onnx` / `<id>-decoder.int8.onnx`. */
+        fun onnxDecoderName(entry: CatalogEntry): String =
+            if (entry.precision == ModelPrecision.INT8) "${entry.model.id}-decoder.int8.onnx"
+            else "${entry.model.id}-decoder.onnx"
+
+        /** ONNX tokens filename for an entry, e.g. `<id>-tokens.txt` (shared by fp32 and int8). */
+        fun onnxTokensName(entry: CatalogEntry): String = "${entry.model.id}-tokens.txt"
     }
 }

@@ -44,7 +44,10 @@ class WhisperManager(
 
     /** Used at startup to reflect the default Model when its file already exists (lazy load). */
     fun setInitialModelIfNone(model: Model) {
-        if (residentModel == null && java.io.File(baseDir, model.fileName).exists()) {
+        // For both formats the fileName is the loadable model file: a GGML .bin for
+        // GGML entries, or the ONNX encoder .onnx/.int8.onnx for ONNX entries.
+        val present = java.io.File(baseDir, model.fileName).exists()
+        if (residentModel == null && present) {
             residentModel = model
         }
     }

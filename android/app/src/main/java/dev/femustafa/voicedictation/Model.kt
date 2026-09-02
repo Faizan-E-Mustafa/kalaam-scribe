@@ -18,8 +18,35 @@ enum class LanguageMode {
 }
 
 /**
- * A downloadable ASR model: a GGML file plus the language mode it runs in.
+ * The model file format: GGML (whisper.cpp .bin, used by [AarWhisperEngine]) or
+ * ONNX (sherpa-onnx .onnx + .tokens, used by [SherpaWhisperEngine]).
+ */
+enum class ModelFormat {
+    GGML,
+    ONNX,
+}
+
+/**
+ * Numerical precision of an ONNX model file. sherpa-onnx auto-detects quantized
+ * (int8) models from `int8` in the filename, so this only chooses which file to
+ * point at: full-precision fp32 or quantized int8.
+ */
+enum class ModelPrecision {
+    FP32,
+    INT8,
+}
+
+/** Human label for a precision tier, used in the model picker meta line. */
+val ModelPrecision.label: String
+    get() = when (this) {
+        ModelPrecision.FP32 -> "fp32"
+        ModelPrecision.INT8 -> "int8"
+    }
+
+/**
+ * A downloadable ASR model: a GGML/ONNX file plus the language mode it runs in.
  * A model is selected/switched independently of any dictation (CONTEXT.md "Model").
+ * The file format (GGML vs ONNX) is chosen app-wide, not per model.
  */
 data class Model(
     val id: String,

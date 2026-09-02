@@ -32,7 +32,7 @@ class VoiceDictationApp : Application() {
 
     /** The single shared resident-model manager, created lazily on first use. */
     val whisper: WhisperManager by lazy {
-        WhisperManager(filesDir, SherpaWhisperEngine(this)).also { mgr ->
+        WhisperManager(filesDir, DualFormatWhisperEngine(this)).also { mgr ->
             // Reflect the user's last-chosen Model (or the catalog default) as the
             // resident Model when its file is already on disk, so the top chip shows
             // it and transcription can start without a picker tap. Load is lazy.
@@ -56,6 +56,23 @@ class VoiceDictationApp : Application() {
     /** Persist the user's chosen Model so it is restored on the next launch. */
     fun setSelectedModelId(id: String) {
         prefs.edit().putString(KEY_MODEL_ID, id).apply()
+    }
+
+    /** The user's chosen model-file format (GGML whisper.cpp default), or the default. */
+    val modelFormat: ModelFormat
+        get() {
+            val stored = prefs.getString(KEY_MODEL_FORMAT, null)
+                ?: return ModelFormat.GGML
+            return try {
+                ModelFormat.valueOf(stored)
+            } catch (_: IllegalArgumentException) {
+                ModelFormat.GGML
+            }
+        }
+
+    /** Persist the chosen model-file format. */
+    fun setModelFormat(format: ModelFormat) {
+        prefs.edit().putString(KEY_MODEL_FORMAT, format.name).apply()
     }
 
     /** Persist + publish a user-picked whisper language code (null/blank = auto). */
@@ -115,6 +132,7 @@ class VoiceDictationApp : Application() {
         private const val PREFS_NAME = "voice_dictation"
         private const val KEY_LANGUAGE_CODE = "language_code"
         private const val KEY_MODEL_ID = "model_id"
+        private const val KEY_MODEL_FORMAT = "model_format"
         private const val KEY_WHISPER_THREADS = "whisper_threads"
         /** Default thread count; auto-select on first run is capped at this value. */
         const val DEFAULT_WHISPER_THREADS = 6
