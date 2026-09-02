@@ -20,6 +20,12 @@ Integrate sherpa‑onnx into the Android app, enabling `initial_prompt` support 
 - ONNX model format required (GGML `.bin` not supported); ticket #21 converts GGML→ONNX
 - Builder pattern confirmed working: `OfflineRecognizerConfig.builder()`, `OfflineModelConfig.builder()`
 - `OfflineModelConfig` uses no-arg constructor + setters (`setNumThreads()`, `setDebug()`, `setWhisper()`)
+- Whisper language passthrough: `SherpaWhisperEngine.transcribe()` calls `recognizer.setConfig()`
+  before each decode (official runtime language-change mechanism, k2-fsa/sherpa-onnx#1116).
+  This pins a user-picked code (e.g. `"ur"`) at decode time, fixing Urdu→Hindi misrecognition
+  on multilingual Whisper models. The C++ whisper impl's `DecodeStream()` re-applies the
+  whisper sub-config to the decoder via `decoder_->SetConfig()` on every decode, so the
+  change takes effect. Dolphin CTC has no language field (issue #2587, feature #3904).
 
 ## Dependencies
 - sherpa‑onnx 1.13.5 (Java API + native libs via JitPack)

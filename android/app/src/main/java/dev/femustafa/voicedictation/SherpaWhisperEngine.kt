@@ -30,7 +30,10 @@ class SherpaWhisperEngine(
 ) : WhisperEngine {
 
     private class SherpaModelRef(
-        val recognizer: OfflineRecognizer
+        val recognizer: OfflineRecognizer,
+        val encoderPath: String,
+        val decoderPath: String,
+        val tokensPath: String,
     ) : WhisperModelRef
 
     override suspend fun load(modelPath: String): WhisperModelRef {
@@ -108,7 +111,7 @@ class SherpaWhisperEngine(
             // Models are loaded from absolute paths in filesDir, so assetManager must
             // be null (sherpa-onnx aborts otherwise — github.com/k2-fsa/sherpa-onnx#2562).
             val recognizer = OfflineRecognizer(null, recognizerConfig)
-            return SherpaModelRef(recognizer)
+            return SherpaModelRef(recognizer, encoderPath, decoderPath, tokensPath)
         }
 
         throw java.io.FileNotFoundException(
@@ -125,6 +128,14 @@ class SherpaWhisperEngine(
         val real = model as? SherpaModelRef ?: throw IllegalArgumentException("unexpected model handle")
         val wave = readWave(audioPath)
             ?: throw java.io.IOException("Failed to read wave file: $audioPath")
+
+        // Apply the per-transcription language via recognizer.setConfig(), which
+        // is the officially supported way to change Whisper language at runtime
+        // (k2-fsa/sherpa-onnx#1116). A user-picked whisper language code (e.g. "ur")
+        // pins the decode so auto-detection can't misguess it (e.g. Urdu -> Hindi);
+        // "en" keeps multilingual output in Latin script for English/RomanUrdu modes.
+        applyLanguage(real, language ?: languageMode.streamLanguage)
+
         val stream = real.recognizer.createStream()
         try {
             stream.acceptWaveform(wave.samples, wave.sampleRate)
@@ -134,6 +145,40 @@ class SherpaWhisperEngine(
             stream.release()
         }
     }
+
+    /**
+     * Update the whisper sub-config of the resident recognizer so subsequent
+     * decodes use [lang] ("" = auto-detect). The C++ whisper impl's SetConfig only
+     * reads the whisper sub-config, so we rebuild just that portion.
+     */
+    private fun applyLanguage(real: SherpaModelRef, lang: String) {
+        val whisperConfig = OfflineWhisperModelConfig()
+        whisperConfig.encoder = real.encoderPath
+        whisperConfig.decoder = real.decoderPath
+        whisperConfig.language = lang
+        whisperConfig.task = "transcribe"
+
+        val modelConfig = OfflineModelConfig()
+        modelConfig.whisper = whisperConfig
+        modelConfig.tokens = real.tokensPath
+        modelConfig.numThreads = VoiceDictationApp.from(context).whisperThreads()
+        modelConfig.debug = true
+
+        val recognizerConfig = OfflineRecognizerConfig()
+        recognizerConfig.modelConfig = modelConfig
+        recognizerConfig.decodingMethod = "greedy_search"
+
+        Log.i(TAG, "setting whisper language to: '${lang}'")
+        real.recognizer.setConfig(recognizerConfig)
+    }
+
+    /** How a [LanguageMode] maps to a per-transcription language code (empty = auto-detect). */
+    private val LanguageMode.streamLanguage: String
+        get() = when (this) {
+            LanguageMode.Auto -> ""
+            LanguageMode.English -> "en"
+            LanguageMode.RomanUrdu -> "en"
+        }
 
     /**
      * Parse a PCM 16-bit mono Wave file into float samples + sample rate.
