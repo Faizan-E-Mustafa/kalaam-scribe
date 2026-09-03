@@ -49,5 +49,15 @@ the fix here when it lands. This is the "other model" gap from the Whisper langu
 - App: `DolphinCtcEngine.kt`, `Model.kt` (`canOverrideLanguage` logic for Dolphin models),
   `ModelCatalog.kt` (`dolphinCtcModels`)
 
+## Notes (2026-09-03): local workaround path active
+- Decision (this repo): rather than wait on upstream #3904, run a **standalone Dolphin
+  pipeline** (no sherpa-onnx). Two implementation tickets added:
+  - **Ticket 27** — laptop validation with the `dolphin` pip package (PyTorch), proving
+    `lang=ur/region=PK` fixes script leakage before any ONNX work.
+  - **Ticket 28** — smartphone ONNX pipeline: export the attention decoder to ONNX and
+    run a standalone onnxruntime decode with the `<lang><region>` prefix.
+- If tickets 27→28 succeed, upstream #3904 becomes moot for this app (we no longer need
+  sherpa-onnx for Dolphin). The upstream tracker stays open only as reference.
+
 ## Labels
 dolphin-ctc, sherpa-onnx, language, upstream-tracker, urdu
