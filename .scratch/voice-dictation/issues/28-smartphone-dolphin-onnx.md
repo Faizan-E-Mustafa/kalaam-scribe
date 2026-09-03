@@ -20,8 +20,13 @@ decoder prompt — the same design the upstream issue proposes.
 - [ ] Standalone ONNX Runtime script (Python-first) that: runs encoder → builds the
       `<sos><lang><region>` decoder prefix → greedy/beam-search decodes with KV cache
       → maps token ids to text via the BPE `units.txt`/`tokens.txt`.
+- [ ] **Decoding must be beam-search `attention`, NOT `attention_rescoring`.** Ticket 27
+      found `attention_rescoring` overrides the `ur`/`PK` pin and flips output to
+      Devanagari; `attention` consistently yields Urdu script when pinned. The ONNX
+      decoder port MUST match the `attention` path (single-pass beam, not the LM
+      rescore pass), or it will reproduce the Hindi-script bug.
 - [ ] On the laptop, the standalone ONNX pipeline matches the `dolphin` package output
-      (from ticket 27) for `ur`/`PK` on the same clip.
+      (from ticket 27, `decoding_method='attention'`) for `ur`/`PK` on the same clip.
 - [ ] Decide on Android integration path: (a) ONNX Runtime Mobile standalone engine
       replacing/paralleling `DolphinCtcEngine`, or (b) contribute the decoder+config
       upstream to sherpa-onnx and consume on the next release. Record the choice and
