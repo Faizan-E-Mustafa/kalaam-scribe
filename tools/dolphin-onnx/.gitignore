@@ -1,0 +1,6 @@
+# Large ONNX model binaries — NOT committed to git.
+# Regenerate them with the scripts in this directory (see README.md).
+*.onnx
+*.onnx.data
+*.ort
+sherpa_model/
