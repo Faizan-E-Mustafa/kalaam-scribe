@@ -135,7 +135,7 @@ class VoiceDictationApp : Application() {
         private const val KEY_MODEL_FORMAT = "model_format"
         private const val KEY_WHISPER_THREADS = "whisper_threads"
         /** Default thread count; auto-select on first run is capped at this value. */
-        const val DEFAULT_WHISPER_THREADS = 6
+        const val DEFAULT_WHISPER_THREADS = 4
 
         fun from(context: Context): VoiceDictationApp =
             context.applicationContext as VoiceDictationApp

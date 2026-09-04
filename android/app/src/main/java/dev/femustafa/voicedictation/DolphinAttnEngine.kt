@@ -18,6 +18,7 @@ import java.nio.ShortBuffer
 import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
+import kotlin.math.min
 
 /**
  * [WhisperEngine] backed directly by onnxruntime-android for the Dolphin attention
@@ -76,6 +77,10 @@ class DolphinAttnEngine(
         val nl: Int,
         val headDim: Int,
         val dModel: Int,
+        /** Load-cached constant decoder inputs, reused across every step's run. */
+        val langStartTensor: OnnxTensor,
+        val langEndTensor: OnnxTensor,
+        val maskTensor: OnnxTensor,
     ) : WhisperModelRef
 
     /** A single decoder run: fresh KV state + the raw full-logits row. */
@@ -144,7 +149,19 @@ class DolphinAttnEngine(
         }
         val tokenList = unitsFile.readLines().map { it.trim().substringBefore(' ') }
 
-        return DolphinAttnModelRef(env, encoder, decoder, tokenList, nl, headDim, dModel)
+        return DolphinAttnModelRef(
+            env, encoder, decoder, tokenList, nl, headDim, dModel,
+            langStartTensor = OnnxTensor.createTensor(
+                env, toDirectLongBuffer(intArrayOf(LANG_UR)), longArrayOf(1)
+            ),
+            langEndTensor = OnnxTensor.createTensor(
+                env, toDirectLongBuffer(intArrayOf(REGION_PK)), longArrayOf(1)
+            ),
+            maskTensor = OnnxTensor.createTensor(
+                env, ByteBuffer.allocateDirect(1).order(ByteOrder.nativeOrder()).also { it.put(0, 0) },
+                longArrayOf(1), OnnxJavaType.INT8
+            ),
+        )
     }
 
     override suspend fun transcribe(
@@ -176,6 +193,9 @@ class DolphinAttnEngine(
     override fun release(model: WhisperModelRef) {
         val ref = model as? DolphinAttnModelRef ?: return
         try {
+            ref.langStartTensor.close()
+            ref.langEndTensor.close()
+            ref.maskTensor.close()
             ref.decoder.close()
             ref.encoder.close()
             Log.i(TAG, "released Dolphin attention model")
@@ -226,9 +246,16 @@ class DolphinAttnEngine(
             }
 
             val finished = mutableListOf<Beam>()
+            // Cap generation by audio length instead of a flat cap: normal Urdu dictation
+            // runs ~2-3 tok/s but degenerate loops (ticket 29 Phase C/D) can otherwise burn
+            // all MAX_LEN steps. Budget worst-case tok/s of audio, plus small headroom.
+            val maxLen = max(
+                MIN_GEN_TOKENS,
+                min(MAX_LEN, audio.size / SAMPLE_RATE * TOK_PER_SEC_WORST + HEADROOM)
+            )
             val t0 = SystemClock.elapsedRealtime()
             var runs = 0L
-            for (step in 0 until MAX_LEN) {
+            for (step in 0 until maxLen) {
                 val active = mutableListOf<Beam>()
                 for (b in beams) {
                     if (b.tokens.last() == EOS) finished.add(b) else active.add(b)
@@ -251,6 +278,9 @@ class DolphinAttnEngine(
                 }
                 candidates.sortByDescending { it.score }
                 beams = candidates.take(BEAM_SIZE)
+                // Hard-stop once the best-ranked beam has finished. With greedy this is the
+                // natural decode end; it also short-circuits degenerate no-EOS loops.
+                if (beams.first().tokens.last() == EOS) break
             }
             val decodeMs = SystemClock.elapsedRealtime() - t0
             Log.i(TAG, "beam search done: steps=${finished.size + 0}, runs=$runs, " +
@@ -319,17 +349,11 @@ class DolphinAttnEngine(
             owned.add(OnnxTensor.createTensor(
                 env, toDirectLongBuffer(intArrayOf(inputIds.size)), longArrayOf(1)
             ).also { inputs["ids_len"] = it })
-            owned.add(OnnxTensor.createTensor(
-                env, toDirectLongBuffer(intArrayOf(LANG_UR)), longArrayOf(1)
-            ).also { inputs["language_start"] = it })
-            owned.add(OnnxTensor.createTensor(
-                env, toDirectLongBuffer(intArrayOf(REGION_PK)), longArrayOf(1)
-            ).also { inputs["language_end"] = it })
-            val mask = ByteBuffer.allocateDirect(1).order(ByteOrder.nativeOrder())
-            mask.put(0, 0)
-            owned.add(OnnxTensor.createTensor(
-                env, mask, longArrayOf(1), OnnxJavaType.INT8
-            ).also { inputs["attention_mask"] = it })
+            // Constants are created once at load() and reused across every step, cutting
+            // per-run JNI tensor churn (the dominant fixed cost on the phone).
+            inputs["language_start"] = ref.langStartTensor
+            inputs["language_end"] = ref.langEndTensor
+            inputs["attention_mask"] = ref.maskTensor
 
             val result = ref.decoder.run(inputs)
             try {
@@ -472,6 +496,14 @@ class DolphinAttnEngine(
 
         private const val BEAM_SIZE = 1
         private const val MAX_LEN = 60
+
+        const val SAMPLE_RATE = 16000
+        /** Worst-case new-token rate per second of audio (degenerate loops ran ~16 tok/s). */
+        private const val TOK_PER_SEC_WORST = 14
+        /** Headroom on top of the worst-case token budget. */
+        private const val HEADROOM = 8
+        /** Never allow fewer generated steps than this, even for very short clips. */
+        private const val MIN_GEN_TOKENS = 8
 
         /** SentencePiece metasymbol for a leading space (U+2581). */
         const val META = "\u2581"

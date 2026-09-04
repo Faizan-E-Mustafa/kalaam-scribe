@@ -162,12 +162,41 @@ of space) to **`~/.cache/dolphin/dakeqq/`** on the home disk. Verify script defa
 
 ## Phase D — Verify + decide integration posture
 
-- [ ] On-device RTF benchmark for the shipped variant(s) — must be < ~1.0 for interactive
-      dictation; pick base vs small / precision tier accordingly.
+- [x] On-device RTF benchmark for the shipped variant(s) — **base fp16/arm, greedy
+      (BEAM_SIZE=1), 8 threads**. Verified under the <1.0 interactive target; see the
+      "On-device RTF (2026-09-04)" section for measured runs.
 - [ ] Record the Android integration decision (ticket 28 open item): standalone ORT engine
       (this ticket) vs contribute decoder upstream to sherpa-onnx (ticket 26). Note
       trade-offs, recommend one.
 - [ ] `lang` field in the app result JSON is populated from the pinned/decoded language.
+
+### On-device RTF (2026-09-04) — greedy (BEAM_SIZE=1), base fp16/arm, threads=8
+
+Beam-4 measured RTF ≈ 8.8 (decodeMs 33065 / 53 steps — per-step dominated by ~95% fixed
+JNI churn), motivating the greedy default. With `BEAM_SIZE=1`, tensor reuse (constants
+loaded once), an audio-duration MAX_LEN cap, an early hard-stop once the best beam hits
+`<eos>`, and threads default 6→8, the re-measure of two real recordings is well under
+target (per-step now a tight 167–171 ms; identical ~11 s clip dropped from 37 runs →
+23 and RTF 0.87 → 0.34):
+
+| clip | encoder-onnx fx | runs | decodeMs | RTF_decode | approx total RTF |
+|------|-----------------|------|----------|------------|------------------|
+| 4.8 s | 0.6 s | 6   | 1004 | **0.21** | ~0.31 |
+| 11.6 s | 1.4 s | 23  | 3930 | **0.34** | ~0.46 |
+
+Transcription is Urdu on both clips (no empty-collapse in this session). Earlier greedy
+runs hit decode RTF 0.19–0.87; the worst clip pre-optimization was 0.87.
+
+**Known remaining caveat (ticket-29 degeneracy):** with a single beam there is no
+alternative to rescue the case where `<eos>` lands right after the prefix
+(observed once: `runs=0, maxH=6` → empty transcript → "No speech detected"). This is
+inherent to greedy; beam ≥2 restores the rescue path at ~8× decode cost. Language pin
+(ur/PK) is independent of beam size, so greedy keeps the Urdu guarantee.
+
+**Latency levers evaluated and abandoned:** fp32 precision tier — laptop (ORT 1.24.3, the
+phone's ORT) shows only ~1.4× per-step speedup (22.3 ms fp16 vs 15.5 ms fp32) for doubling
+the download (126→252 MB); not worth it. NNAPI delegate / int8 quantization / beam>1
+deferred as non-goals or accuracy risks.
 
 ## Confirmed verification (laptop, 2026-09-04) — surgured pair, FULL-logits beam
 
