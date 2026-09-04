@@ -6,6 +6,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import ai.onnxruntime.TensorInfo
 import android.content.Context
+import android.os.SystemClock
 import android.util.Log
 import dev.femustafa.voicedictation.WhisperEngine.*
 import java.io.File
@@ -59,8 +60,10 @@ class DolphinAttnEngine(
         val deKeys: List<ShortBuffer>,
         val deValues: List<ShortBuffer>,
     ) {
-        /** A new beam extending this one with [token], appending its log-prob. */
-        fun extend(token: Int, logProb: Double): Beam =
+        /** A new beam extending this one with [token], appending its log-prob and
+         * advancing to the decoder KV state returned by the step that produced [token]. */
+        fun extend(token: Int, logProb: Double, deKeys: List<ShortBuffer>,
+                   deValues: List<ShortBuffer>): Beam =
             Beam(tokens + token, score + logProb, deKeys, deValues)
     }
 
@@ -126,6 +129,14 @@ class DolphinAttnEngine(
         val headDim = keyShape[0].toInt()
         val dModel = keyShape[1].toInt()
         Log.i(TAG, "Dolphin attention arch: nl=$nl headDim=$headDim dModel=$dModel")
+        Log.i(TAG, "decoder outputs: ${decoder.getOutputInfo().keys.sorted()}")
+        Log.i(TAG, "encoder outputs: ${encoder.getOutputInfo().keys.sorted()}")
+        Log.i(TAG, "decoder inputs: " + decoder.getInputInfo().map { (name, node) ->
+            // TensorInfo holds the declared type + shape of each graph input; log them
+            // so a Kotlin-provided shape can be diffed against the model's expectation.
+            val ti = (node.info as? ai.onnxruntime.TensorInfo)
+            "$name=${ti?.type}:${ti?.shape?.toList()}"
+        })
 
         val unitsFile = File(unitsPath)
         if (!unitsFile.exists() || unitsFile.length() == 0L) {
@@ -150,10 +161,16 @@ class DolphinAttnEngine(
         if (language != null && language != "ur") {
             Log.w(TAG, "language '$language' requested; only ur/PK pin verified, using it")
         }
-        val audio = readWaveShorts(audioPath)
-            ?: throw IOException("Failed to read wave file: $audioPath")
-        val tokens = beamSearch(ref, audio)
-        return decodeTokens(ref, tokens)
+        return try {
+            val audio = readWaveShorts(audioPath)
+                ?: throw IOException("Failed to read wave file: $audioPath")
+            Log.i(TAG, "transcribing ${audio.size} samples (${audio.size / 1600 / 10.0} s)")
+            val tokens = beamSearch(ref, audio)
+            decodeTokens(ref, tokens)
+        } catch (e: Exception) {
+            Log.e(TAG, "dolphin attention transcribe failed", e)
+            throw e
+        }
     }
 
     override fun release(model: WhisperModelRef) {
@@ -188,8 +205,8 @@ class DolphinAttnEngine(
 
         // Reusable encoder cross-KV, kept open for the whole decode.
         val encResult = ref.encoder.run(mapOf("audio" to audioTensor))
-        val enKeys = (0 until ref.nl).map { encResult.get("en_key_$it") as OnnxTensor }
-        val enValues = (0 until ref.nl).map { encResult.get("en_value_$it") as OnnxTensor }
+        val enKeys = (0 until ref.nl).map { encResult.tensor("en_key_$it") }
+        val enValues = (0 until ref.nl).map { encResult.tensor("en_value_$it") }
         try {
 
             val prefix = intArrayOf(SOS, LANG_UR, REGION_PK, ASR, NOTS)
@@ -199,6 +216,8 @@ class DolphinAttnEngine(
             val emptyKeys = (0 until ref.nl).map { EMPTY_BUFFER }
             val emptyValues = (0 until ref.nl).map { EMPTY_BUFFER }
             val pre = runDecoder(ref, enKeys, enValues, prefix, 0, emptyKeys, emptyValues)
+            Log.i(TAG, "prefill kv[0] remaining=${pre.deKeys[0].remaining()} " +
+                "h=${pre.deKeys[0].remaining() / (ref.headDim * ref.dModel)}")
             val preLogProbs = logSoftmax(pre.fullLogits)
 
             var beams = topK(preLogProbs, BEAM_SIZE).map { idx ->
@@ -207,6 +226,8 @@ class DolphinAttnEngine(
             }
 
             val finished = mutableListOf<Beam>()
+            val t0 = SystemClock.elapsedRealtime()
+            var runs = 0L
             for (step in 0 until MAX_LEN) {
                 val active = mutableListOf<Beam>()
                 for (b in beams) {
@@ -222,14 +243,18 @@ class DolphinAttnEngine(
                         historyLen = b.tokens.size - 1,
                         deKeys = b.deKeys, deValues = b.deValues,
                     )
+                    runs++
                     val lp = logSoftmax(r.fullLogits)
                     for (idx in topK(lp, BEAM_SIZE)) {
-                        candidates.add(b.extend(idx, lp[idx]))
+                        candidates.add(b.extend(idx, lp[idx], r.deKeys, r.deValues))
                     }
                 }
                 candidates.sortByDescending { it.score }
                 beams = candidates.take(BEAM_SIZE)
             }
+            val decodeMs = SystemClock.elapsedRealtime() - t0
+            Log.i(TAG, "beam search done: steps=${finished.size + 0}, runs=$runs, " +
+                "decodeMs=$decodeMs, maxH=${beams.firstOrNull()?.tokens?.size ?: 0}")
 
             // Length-normalized selection (ticket 29): skip prefix-only hypotheses (an
             // empty transcript is never a valid dictation), then choose by cumulative
@@ -271,8 +296,11 @@ class DolphinAttnEngine(
         val owned = mutableListOf<OnnxTensor>()
         try {
             for (i in 0 until n) {
-                val keyShape = longArrayOf(ref.headDim.toLong(), ref.dModel.toLong(), deKeys[i].remaining().toLong())
-                val valShape = longArrayOf(ref.headDim.toLong(), deValues[i].remaining().toLong(), ref.dModel.toLong())
+                // remaining() is the TOTAL fp16 element count (head*dModel*historyLen);
+                // fold it back to historyLen for the [head,dModel,h]/[head,h,dModel] feeds.
+                val h = deKeys[i].remaining() / (ref.headDim * ref.dModel)
+                val keyShape = longArrayOf(ref.headDim.toLong(), ref.dModel.toLong(), h.toLong())
+                val valShape = longArrayOf(ref.headDim.toLong(), h.toLong(), ref.dModel.toLong())
                 owned.add(OnnxTensor.createTensor(
                     env, deKeys[i].duplicate(), keyShape, OnnxJavaType.FLOAT16
                 ).also { inputs["in_de_key_$i"] = it })
@@ -305,9 +333,9 @@ class DolphinAttnEngine(
 
             val result = ref.decoder.run(inputs)
             try {
-                val keys = (0 until n).map { (result.get("out_de_key_$it") as OnnxTensor).getShortBuffer() }
-                val values = (0 until n).map { (result.get("out_de_value_$it") as OnnxTensor).getShortBuffer() }
-                val logits = (result.get(OUTPUT_LOGITS) as OnnxTensor).getFloatBuffer()
+                val keys = (0 until n).map { result.tensor("out_de_key_$it").getShortBuffer() }
+                val values = (0 until n).map { result.tensor("out_de_value_$it").getShortBuffer() }
+                val logits = result.tensor(OUTPUT_LOGITS).getFloatBuffer()
                 val row = FloatArray(logits.remaining())
                 logits.get(row)
                 return DecodeResult(keys, values, row)
@@ -334,6 +362,17 @@ class DolphinAttnEngine(
             .sortedWith(compareByDescending { v[it] })
             .take(k)
             .toIntArray()
+
+    /**
+     * OrtSession.Result is not a Map in onnxruntime 1.24.3: `get(name)` returns
+     * [java.util.Optional]. Unwrap it to the named tensor (encoder cross-KV outputs
+     * or decoder out_{de_key,de_value}/logits outputs); throws if the model did not
+     * produce the expected output.
+     */
+    private fun OrtSession.Result.tensor(name: String): OnnxTensor =
+        get(name).orElseThrow {
+            IllegalStateException("ONNX run did not produce output '$name'")
+        } as OnnxTensor
 
     /** Convert content token ids (after the 5-token prefix) to text via units.txt. */
     private fun decodeTokens(ref: DolphinAttnModelRef, tokens: IntArray): String {
@@ -431,7 +470,7 @@ class DolphinAttnEngine(
         /** Full-logits output name added by `add_logits_output.py` graph surgery. */
         const val OUTPUT_LOGITS = "/output_layer/Gemm_output_0"
 
-        private const val BEAM_SIZE = 4
+        private const val BEAM_SIZE = 1
         private const val MAX_LEN = 60
 
         /** SentencePiece metasymbol for a leading space (U+2581). */
