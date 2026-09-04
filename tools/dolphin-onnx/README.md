@@ -67,6 +67,35 @@ with onnxruntime.
 
 The regenerated file: `decoder_withlogits.onnx` (≈241MB, same as original spike).
 
+Both models are verified with the corrected beam search. **Layer/head counts differ by
+variant and are NOT hardcoded** in the decoder: `base` = 6 layers / 8 heads,
+`small` = 12 layers / 12 heads. `verify_dakeqq_beam.py` derives both from the model at
+runtime (`en_key_*` count → layers; encoder output shape → head/dim).
+
+### Beam search needs length-normalized scoring (small)
+
+`small`'s decoder assigns `<eos>` an abnormally high probability right after the prefix,
+so under **plain cumulative-logprob** beam selection the empty (prefix-only) hypothesis and
+short one-token truncations out-score the full sentence — beam search returns an empty
+transcript even though greedy is correct. The beam loop therefore:
+1. keeps completed (EOS) hypotheses on a separate list from active beams, and
+2. selects by **length-normalized score** (cumulative ÷ #content tokens) among
+   content-bearing hypotheses, dropping prefix-only empties.
+The Android port MUST reproduce this beam logic or small will emit empty/truncated output.
+
+### Precision tier for on-device — fp16/arm (not int8 `.ort`)
+
+DakeQQ's HF repo ships three tiers; our beam search needs the full-logits output, which only
+exists in the **graph-surgeried `.onnx`**. The int8 tier is `.ort` (onnxruntime-optimized
+flatbuffer), which `add_logits_output.py` (ONNX proto) can't modify — so int8 is unusable
+here without extra ONNX→ORT reconversion tooling.
+
+The **fp16/arm `.onnx`** tier is the on-device choice: roughly half the fp32 size and verified
+operative (both base and small beam-decode to correct Urdu after surgery). It requires the
+beam's KV-cache tensors to be **float16** (encoder cross-KV output is fp16; the decoder KV
+inputs are fp16). `verify_dakeqq_beam.py` derives the cache dtype from the encoder output, so
+it handles fp32 and fp16 alike.
+
 ## File layout (repo, tools/dolphin-onnx/)
 
 ```
@@ -95,9 +124,20 @@ tools/dolphin-onnx/
 
 All script paths reference model files at:
 
-- `~/.cache/dolphin/base/` — Dolphin model cache (units.txt, bpe.model, feats_stats.npz, base.pt)
+- `~/.cache/dolphin/base/` — Dolphin original torch model cache (units.txt, bpe.model,
+  feats_stats.npz, base.pt). Also the vocab (units.txt + bpe.model) used by the DakeQQ
+  verification script's `decode_text`.
+- `~/.cache/dolphin/dakeqq/` — DakeQQ ONNX pair working files (moved here from
+  `/tmp/opencode/dakeqq/` on 2026-09-04 when the 3.9 GB tmpfs ran out). One subdir per
+  tier/variant:
+  - `dolphin-base/`, `dolphin-small/` — fp32 pair (`.onnx`), surgured decoder
+  - `base-fp16-arm/`, `small-fp16-arm/` — **fp16/arm pair**, the recommended on-device tier
 - `tools/validate_stt/.venv` — Python 3.11 with dependencies (torch, onnx, onnxruntime, sentencepiece, dolphin, soundfile, numpy)
 - `/home/femustafa/projects/learning_ws` — repo root, where the above `tools/dolphin-onnx/` lives.
+
+> Note: `verify_dakeqq_beam.py`'s default `--dakeqq-dir` is still
+> `~/.cache/dolphin/dakeqq/dolphin-base` — pass a per-tier dir explicitly when verifying a
+> different tier/variant, e.g. `--dakeqq-dir ~/.cache/dolphin/dakeqq/small-fp16-arm`.
 
 ### Step 1 — Export a decoder (once)
 
