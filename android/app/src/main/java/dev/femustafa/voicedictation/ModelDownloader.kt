@@ -31,7 +31,7 @@ class ModelDownloader(
 
     private val DEFAULT_BUFFER_SIZE = 8192
 
-    private companion object {
+    companion object {
         const val TAG = "ModelDownloader"
 
         // ONNX model files ship as three siblings. These floor sizes reject
@@ -43,13 +43,24 @@ class ModelDownloader(
         // Dolphin CTC model.onnx is a few tens of MB at minimum; this floor
         // rejects stale/truncated downloads before sherpa-onnx tries to load them.
         const val MIN_DOLPHIN_MODEL_BYTES = 1_000_000L
+        // Dolphin attention encoders/decoders are tens to hundreds of MB fp16; this
+        // floor rejects truncated downloads the ORT engine would otherwise fail on.
+        const val MIN_ATTN_ENC_DEC_BYTES = 1_000_000L
+        // units.txt (the id→symbol vocab) is ~500 KB.
+        const val MIN_ATTN_UNITS_BYTES = 100_000L
+
+        /** The decoder filename for a Dolphin attention model, e.g. `<id>-decoder.onnx`. */
+        fun dolphinAttnDecoderName(entry: CatalogEntry): String = "${entry.model.id}-decoder.onnx"
+
+        /** The shared units.txt vocab filename for all Dolphin attention models. */
+        fun dolphinAttnUnitsName(): String = "dolphin-attn-units.txt"
     }
 
     /**
      * Download [entry] into [baseDir] for [format], calling [onProgress] with a
      * fraction 0f..1f. If the target file(s) already exist, returns Success without
-     * re-downloading. Dolphin CTC entries are routed to their own download path
-     * (a single model.onnx + tokens.txt) regardless of [format].
+     * re-downloading. Dolphin CTC and Dolphin attention entries are routed to their
+     * own download paths regardless of [format].
      */
     suspend fun download(
         entry: CatalogEntry,
@@ -57,6 +68,7 @@ class ModelDownloader(
         onProgress: (Float) -> Unit,
     ): Result = when {
         ModelCatalog.isDolphinCtc(entry) -> downloadDolphinCtc(entry, onProgress)
+        ModelCatalog.isDolphinAttn(entry) -> downloadDolphinAttn(entry, onProgress)
         format == ModelFormat.GGML -> downloadGGML(entry, onProgress)
         else -> downloadONNX(entry, onProgress)
     }
@@ -64,6 +76,7 @@ class ModelDownloader(
     /** Whether [entry] already has a downloaded file for [format]. */
     fun isDownloaded(entry: CatalogEntry, format: ModelFormat): Boolean = when {
         ModelCatalog.isDolphinCtc(entry) -> dolphinComplete(entry)
+        ModelCatalog.isDolphinAttn(entry) -> dolphinAttnComplete(entry)
         format == ModelFormat.GGML -> java.io.File(baseDir, entry.model.fileName).exists()
         else -> onnxComplete(entry)
     }
@@ -78,6 +91,23 @@ class ModelDownloader(
         val tokens = java.io.File(baseDir, DolphinCtcEngine.dolphinTokensName(entry))
         return model.exists() && model.length() >= MIN_DOLPHIN_MODEL_BYTES &&
             tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES
+    }
+
+    /**
+     * True when all three Dolphin attention files (encoder.onnx, decoder.onnx and the
+     * shared units.txt) exist with plausible sizes, plus the encoder and decoder
+     * actually differ (downloading a decoder into the encoder slot would pass the
+     * size floor but crash the ORT session). Guards against stale/truncated files
+     * that would otherwise load as "Ready" and crash the engine at transcription time.
+     */
+    fun dolphinAttnComplete(entry: CatalogEntry): Boolean {
+        val encoder = java.io.File(baseDir, dolphinAttnEncoderName(entry))
+        val decoder = java.io.File(baseDir, dolphinAttnDecoderName(entry))
+        val units = java.io.File(baseDir, dolphinAttnUnitsName())
+        return encoder.exists() && encoder.length() >= MIN_ATTN_ENC_DEC_BYTES &&
+            decoder.exists() && decoder.length() >= MIN_ATTN_ENC_DEC_BYTES &&
+            units.exists() && units.length() >= MIN_ATTN_UNITS_BYTES &&
+            encoder.length() != decoder.length()
     }
 
     /**
@@ -106,6 +136,17 @@ class ModelDownloader(
     fun onnxDecoderName(entry: CatalogEntry): String =
         if (entry.precision == ModelPrecision.INT8) "${entry.model.id}-decoder.int8.onnx"
         else "${entry.model.id}-decoder.onnx"
+
+    /** The encoder filename for a Dolphin attention model, e.g. `<id>-encoder.onnx`. */
+    fun dolphinAttnEncoderName(entry: CatalogEntry): String = entry.model.fileName
+
+    /** The decoder sibling URL for a Dolphin attention encoder URL (same dir, `decoder.onnx`). */
+    fun dolphinAttnDecoderUrl(encoderUrl: String): String =
+        encoderUrl.substringBefore("/encoder.onnx") + "/decoder.onnx"
+
+    /** The shared units.txt URL (the parent-of-variant `dolphin-attn/` dir). */
+    fun dolphinAttnUnitsUrl(encoderUrl: String): String =
+        encoderUrl.substringBeforeLast('/').substringBeforeLast('/') + "/units.txt"
 
     private suspend fun downloadGGML(
         entry: CatalogEntry,
@@ -279,6 +320,125 @@ class ModelDownloader(
             return Result.Failure(e.message ?: e.toString())
         } finally {
             connection.disconnect()
+        }
+    }
+
+    /**
+     * Download a Dolphin attention model: its encoder.onnx (from
+     * [CatalogEntry.onnxSourceUrl], renamed to `<id>-encoder.onnx`), the graph-surgeried
+     * `decoder.onnx` sibling, and the shared `units.txt` vocab. Loading without any file
+     * crashes the ORT engine, so a missing sibling is reported rather than ignored.
+     */
+    private suspend fun downloadDolphinAttn(
+        entry: CatalogEntry,
+        onProgress: (Float) -> Unit,
+    ): Result {
+        val url = entry.onnxSourceUrl
+            ?: return Result.Failure("No ONNX URL for model ${entry.model.id}")
+        val encoderTarget = java.io.File(baseDir, dolphinAttnEncoderName(entry))
+        if (encoderTarget.exists() && encoderTarget.length() >= MIN_ATTN_ENC_DEC_BYTES) {
+            ensureDolphinAttnSiblings(entry, url)
+            onProgress(1f)
+            return Result.Success(encoderTarget.length())
+        }
+
+        val encoderTmp = java.io.File(baseDir, "${dolphinAttnEncoderName(entry)}.part")
+        val connection = URL(url).openConnection() as HttpURLConnection
+        try {
+            connection.connectTimeout = 15_000
+            connection.readTimeout = 30_000
+            connection.connect()
+            val code = connection.responseCode
+            if (code != HttpURLConnection.HTTP_OK) {
+                return httpFailure(code, url)
+            }
+            val total = connection.contentLengthLong
+            var downloaded = 0L
+            encoderTarget.parentFile?.mkdirs()
+
+            connection.inputStream.use { input ->
+                encoderTmp.outputStream().use { out ->
+                    val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                    while (true) {
+                        val read = input.read(buf)
+                        if (read == -1) break
+                        out.write(buf, 0, read)
+                        downloaded += read
+                        if (total > 0) onProgress(downloaded.toFloat() / total)
+                    }
+                }
+            }
+
+            if (encoderTmp.renameTo(encoderTarget)) {
+                encoderTmp.delete()
+                ensureDolphinAttnSiblings(entry, url)
+                onProgress(1f)
+                return Result.Success(downloaded)
+            }
+            return Result.Failure("rename failed")
+        } catch (e: Exception) {
+            encoderTmp.delete()
+            return Result.Failure(e.message ?: e.toString())
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    /** Ensure the decoder.onnx + units.txt siblings exist, downloading concurrently. */
+    private suspend fun ensureDolphinAttnSiblings(entry: CatalogEntry, encoderUrl: String) {
+        val (decoderGot, unitsGot) = coroutineScope {
+            val decoderDeferred = async { ensureDolphinAttnSibling(dolphinAttnDecoderUrl(encoderUrl), dolphinAttnDecoderName(entry), MIN_ATTN_ENC_DEC_BYTES) }
+            val unitsDeferred = async { ensureDolphinAttnSibling(dolphinAttnUnitsUrl(encoderUrl), dolphinAttnUnitsName(), MIN_ATTN_UNITS_BYTES) }
+            decoderDeferred.await() to unitsDeferred.await()
+        }
+        if (!(decoderGot && unitsGot)) {
+            Log.w(TAG, "Dolphin attention sibling download incomplete for ${entry.model.id}")
+        }
+    }
+
+    /** Best-effort download of one Dolphin attention sibling, streaming to `.part` + rename. */
+    private fun ensureDolphinAttnSibling(
+        siblingUrl: String,
+        outName: String,
+        minBytes: Long,
+    ): Boolean {
+        val targetFile = java.io.File(baseDir, outName)
+        if (targetFile.exists() && targetFile.length() >= minBytes) return true
+        if (targetFile.exists()) {
+            Log.w(TAG, "discarding undersized $outName (${targetFile.length()} bytes)")
+            targetFile.delete()
+        }
+        val tmp = java.io.File(baseDir, "$outName.part")
+        try {
+            val connection = URL(siblingUrl).openConnection() as HttpURLConnection
+            var ok = false
+            try {
+                connection.connectTimeout = 15_000
+                connection.readTimeout = 30_000
+                connection.connect()
+                val code = connection.responseCode
+                if (code != HttpURLConnection.HTTP_OK) return false
+                connection.inputStream.use { input ->
+                    targetFile.parentFile?.mkdirs()
+                    tmp.outputStream().use { out ->
+                        val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                        while (true) {
+                            val read = input.read(buf)
+                            if (read == -1) break
+                            out.write(buf, 0, read)
+                        }
+                    }
+                }
+                ok = tmp.renameTo(targetFile)
+            } finally {
+                connection.disconnect()
+            }
+            if (!ok) tmp.delete()
+            return ok && targetFile.exists() && targetFile.length() >= minBytes
+        } catch (e: Exception) {
+            tmp.delete()
+            Log.w(TAG, "dolphin attention sibling download failed for $outName from $siblingUrl: ${e.message}")
+            return false
         }
     }
 

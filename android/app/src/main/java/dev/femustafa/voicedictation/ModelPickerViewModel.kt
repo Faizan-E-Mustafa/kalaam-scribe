@@ -70,9 +70,10 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
     /** The [CatalogEntry]s to show for the current format. */
     private fun catalogFor(format: ModelFormat): List<CatalogEntry> = when (format) {
         ModelFormat.GGML -> ModelCatalog.ggmlModels
-        // Dolphin CTC models load through sherpa-onnx (ONNX files), so they show
-        // up alongside the Whisper ONNX models when that format is selected.
-        ModelFormat.ONNX -> ModelCatalog.onnxModels + ModelCatalog.dolphinCtcModels
+        // Dolphin CTC and Dolphin attention models load through ONNX files on phone
+        // (sherpa-onnx / onnxruntime-android), so they show up alongside the Whisper
+        // ONNX models when that format is selected.
+        ModelFormat.ONNX -> ModelCatalog.onnxModels + ModelCatalog.dolphinCtcModels + ModelCatalog.dolphinAttnModels
     }
 
     /** Whether this model has an ONNX build available (Roman-Urdu does not). */

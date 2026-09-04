@@ -68,6 +68,44 @@ class ModelCatalogTest {
     }
 
     @Test
+    fun dolphinAttnCatalogHasBaseAndSmallFp16Encoders() {
+        // 2 Dolphin attention sizes (base, small), fp16/arm tier only.
+        assertEquals(2, ModelCatalog.dolphinAttnModels.size)
+        val ids = ModelCatalog.dolphinAttnModels.map { it.model.id }
+        assertTrue(ids.contains("dolphin-attn-base"))
+        assertTrue(ids.contains("dolphin-attn-small"))
+        for (e in ModelCatalog.dolphinAttnModels) {
+            // fp16/arm only (the verifier covered the kill-question "which tier ships").
+            assertEquals(ModelPrecision.FP16, e.precision)
+            // Language-mode Auto: the decoder pins ur/PK tokens itself.
+            assertEquals(LanguageMode.Auto, e.model.languageMode)
+            assertTrue(e.model.canOverrideLanguage)
+            // An encoder + sibling decoder named after the id, sharing units.txt.
+            assertTrue(e.model.fileName.endsWith("-encoder.onnx"))
+            // The decoder URL is its sibling alongside the encoder.
+            assertEquals("${e.model.id}-decoder.onnx", ModelDownloader.dolphinAttnDecoderName(e))
+            val size = e.model.id.removePrefix("dolphin-attn-")
+            assertEquals("${ModelCatalog.RU_HF}/dolphin-attn/$size/decoder.onnx",
+                e.onnxSourceUrl!!.substringBefore("/encoder.onnx") + "/decoder.onnx")
+            // A sibling units.txt URL one directory up.
+            assertTrue(e.onnxSourceUrl!!.startsWith(ModelCatalog.DOLPHIN_ATTN_HF))
+            // ONNX-hosted, no GGML source.
+            assertNull(e.sourceUrl)
+        }
+    }
+
+    @Test
+    fun dolphinAttnEntriesRouteToDolphinAttnCatalog() {
+        for (e in ModelCatalog.dolphinAttnModels) {
+            assertTrue(ModelCatalog.isDolphinAttn(e))
+            assertTrue(ModelCatalog.isDolphinAttnFileName(e.model.fileName))
+            assertFalse(ModelCatalog.isDolphinCtc(e))
+            // byId resolves them across all catalogs.
+            assertEquals(e.model.id, ModelCatalog.byId(e.model.id)!!.model.id)
+        }
+    }
+
+    @Test
     fun defaultIsRomanUrduQ4() {
         val d = ModelCatalog.default
         assertEquals("roman-urdu-q4_0", d.model.id)
@@ -146,7 +184,8 @@ class ModelCatalogTest {
 
     @Test
     fun everyEntryHasUniqueId() {
-        val all = ModelCatalog.ggmlModels + ModelCatalog.onnxModels + ModelCatalog.dolphinCtcModels
+        val all = ModelCatalog.ggmlModels + ModelCatalog.onnxModels +
+            ModelCatalog.dolphinCtcModels + ModelCatalog.dolphinAttnModels
         val ids = all.map { it.model.id }.toSet()
         assertEquals(all.size, ids.size)
     }

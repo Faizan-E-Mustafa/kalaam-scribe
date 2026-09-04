@@ -109,11 +109,18 @@ of space) to **`~/.cache/dolphin/dakeqq/`** on the home disk. Verify script defa
 
 ## Phase B — Android: dependency + engine
 
-- [ ] Add **onnxruntime-android** to `android/app/build.gradle.kts`. NOTE the app today has
+- [x] Add **onnxruntime-android** to `android/app/build.gradle.kts`. NOTE the app today has
       NO direct onnxruntime dependency — only sherpa-onnx's bundled native lib. The DakeQQ
       pair runs through ORT directly, so this AAR is required (this is the whole reason the
       new engine is separate from `DolphinCtcEngine`).
-- [ ] New `DolphinAttnEngine.kt` implementing `WhisperEngine`:
+      **Note (2026-09-04)**: ORT pinned to `1.24.3`. Both sherpa-onnx 1.13.5 and this AAR
+      ship a `libonnxruntime.so`; resolved via `packaging.jniLibs.pickFirsts` (keep ONE copy,
+      onnxruntime-android declared first so its 1.24.3 build wins — it also carries the
+      `ai.onnxruntime` JNI glue `libonnxruntime4j_jni.so` used by the engine). Verified the
+      merged APK carries exactly one ORT runtime per ABI (the 1.24.3 one; sherpa's 21.7 MB
+      copy dropped). sherpa's JNI dynamically links the same shared runtime via ORT's stable
+      C API — re-verify on-device in Phase C/D.
+- [x] New `DolphinAttnEngine.kt` implementing `WhisperEngine`:
       - **load**: open ORT sessions for encoder + decoder; load vocab.
       - **transcribe**: encoder (raw int16 in-graph) → prefill `<sos><ur><PK><asr><nots>`
         → KV-cached attention beam search over the FULL-logits output → detokenize. Port
@@ -124,24 +131,34 @@ of space) to **`~/.cache/dolphin/dakeqq/`** on the home disk. Verify script defa
         length-normalized score. Otherwise small returns an empty/truncated transcript.
       - **language handling**: unlike `DolphinCtcEngine`, this engine **honors** the passed
         `language`/`languageMode` — it uses them for the ur/PK pin.
-- [ ] Decide vocab source on-device. The DakeQQ HF repo ships only `tokens.txt`; the
+- [x] Decide vocab source on-device. The DakeQQ HF repo ships only `tokens.txt`; the
       verified laptop path uses `bpe.model` + `sentencepiece.DecodePieces`. Pick what works:
       either publish/ship `bpe.model` too, or switch to sherpa-style token decode from
       `tokens.txt` only. Record which.
       **Note (2026-09-04)**: published BOTH `units.txt` (tokens list) and `bpe.model` in
       `dolphin-attn/`, so either decode route is possible from the artifacts already up.
+      **Decided**: units.txt only for on-device decode — `decodeDolphinPieces` (leading
+      `▁` → space, concatenate, trimStart) matches `sp.DecodePieces` on real Urdu output;
+      `bpe.model` is not needed for decoding.
 
 ## Phase C — Wire into app
 
-- [ ] `ModelCatalog.kt`: add a `dolphinAttnModels` list (both sizes) with URLs to
+- [x] `ModelCatalog.kt`: add a `dolphinAttnModels` list (both sizes) with URLs to
       `femustafa/voicedictation-models/dolphin-attn/`; add `isDolphinAttn(entry)` /
       `isDolphinAttnFileName(...)` helpers; include them in the ONNX tab
       (`ModelPickerViewModel.catalogFor`).
-- [ ] `ModelDownloader.kt`: new download path fetching the 3–4 sibling files
+- [x] `ModelDownloader.kt`: new download path fetching the 3–4 sibling files
       (encoder, decoder_withlogits, tokens, [bpe]) with per-file min-size guards and a
-      `dolphinAttnComplete()` check.
-- [ ] `DualFormatWhisperEngine.kt`: route `dolphinAttnModels` entries to `DolphinAttnEngine`
+      `dolphinAttnComplete()` check. (Downloaded: encoder + decoder + units.txt; decoder
+      and units URLs derived from the encoder URL; `dolphinAttnComplete` also guards
+      encoder≠decoder bytes so a swapped file can't pass the size floor.)
+      **Note (2026-09-04)**: `dolphinAttnDecoderName`/`dolphinAttnUnitsName` live in a
+      public `companion object` (matching `DolphinCtcEngine.dolphinTokensName`) because the
+      engine calls them via `ModelDownloader.<name>`; instance members would not resolve.
+- [x] `DualFormatWhisperEngine.kt`: route `dolphinAttnModels` entries to `DolphinAttnEngine`
       via a format discriminator, mirroring the Dolphin CTC routing.
+      **Note (2026-09-04)**: refactored the discriminator from `format: ModelFormat?`
+      (null = dolphin) to a `Backend` enum {GGML, ONNX, DOLPHIN_CTC, DOLPHIN_ATTN}.
 
 ## Phase D — Verify + decide integration posture
 

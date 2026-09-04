@@ -8,13 +8,17 @@ import dev.femustafa.voicedictation.WhisperEngine.*
  * [WhisperEngine] that dispatches to one of several backends:
  *  - [ModelFormat.GGML] → [AarWhisperEngine] (whisper.cpp .bin files)
  *  - [ModelFormat.ONNX] → [SherpaWhisperEngine] (sherpa-onnx Whisper .onnx + .tokens)
- *  - Dolphin CTC → [DolphinCtcEngine] (sherpa-onnx OfflineDolphinModelConfig)
+ *  - Dolphin CTC → [DolphinCtcEngine] (sherpa-onnx OfflineDolphinModelConfig,
+ *    auto-detect language)
+ *  - Dolphin attention → [DolphinAttnEngine] (onnxruntime-android encoder+decoder,
+ *    honors the ur/PK language pin)
  *
  * Lets a user choose between GGML and ONNX for the same underlying Whisper model
  * and have both work (Ticket 21). The chosen format is read at load time from
  * [VoiceDictationApp.modelFormat] for Whisper models, so switching format +
- * re-selecting a model reloads it with the matching backend. Dolphin CTC models
- * are always routed to [DolphinCtcEngine] regardless of the Whisper format.
+ * re-selecting a model reloads it with the matching backend. Dolphin CTC and
+ * Dolphin attention models are always routed to their dedicated engines regardless
+ * of the Whisper format.
  *
  * The backends return different, unrelated handle types, so this class wraps every
  * handle with its own [DualModelRef] carrying the backend; that lets
@@ -24,14 +28,17 @@ class DualFormatWhisperEngine(
     private val context: Context,
 ) : WhisperEngine {
 
+    private enum class Backend { GGML, ONNX, DOLPHIN_CTC, DOLPHIN_ATTN }
+
     private class DualModelRef(
-        val format: ModelFormat?,
+        val backend: Backend,
         val delegate: WhisperModelRef,
     ) : WhisperModelRef
 
     private val ggmlEngine = AarWhisperEngine(context)
     private val onnxEngine = SherpaWhisperEngine(context)
     private val dolphinCtcEngine = DolphinCtcEngine(context)
+    private val dolphinAttnEngine = DolphinAttnEngine(context)
 
     private fun engineFor(format: ModelFormat): WhisperEngine = when (format) {
         ModelFormat.GGML -> ggmlEngine
@@ -43,17 +50,27 @@ class DualFormatWhisperEngine(
         VoiceDictationApp.from(context).modelFormat
 
     override suspend fun load(modelPath: String): WhisperModelRef {
-        // Dolphin CTC models load through their own engine, independent of the
-        // user's Whisper GGML/ONNX format choice.
-        if (ModelCatalog.isDolphinCtcFileName(modelPath.substringAfterLast('/'))) {
+        val fileName = modelPath.substringAfterLast('/')
+        // Dolphin Attn models load through their own ORT-based engine, independent of
+        // the user's Whisper GGML/ONNX format choice.
+        if (ModelCatalog.isDolphinAttnFileName(fileName)) {
+            Log.i(TAG, "loading Dolphin attention model: $modelPath")
+            return DualModelRef(Backend.DOLPHIN_ATTN, dolphinAttnEngine.load(modelPath))
+        }
+        // Dolphin CTC models load through their own engine, also format-independent.
+        if (ModelCatalog.isDolphinCtcFileName(fileName)) {
             Log.i(TAG, "loading Dolphin CTC model: $modelPath")
-            val delegate = dolphinCtcEngine.load(modelPath)
-            return DualModelRef(format = null, delegate)
+            return DualModelRef(Backend.DOLPHIN_CTC, dolphinCtcEngine.load(modelPath))
         }
         val format = currentFormat()
         Log.i(TAG, "loading model with format $format: $modelPath")
-        val delegate = engineFor(format).load(modelPath)
-        return DualModelRef(format, delegate)
+        return DualModelRef(
+            when (format) {
+                ModelFormat.GGML -> Backend.GGML
+                ModelFormat.ONNX -> Backend.ONNX
+            },
+            engineFor(format).load(modelPath),
+        )
     }
 
     override suspend fun transcribe(
@@ -64,21 +81,23 @@ class DualFormatWhisperEngine(
     ): String {
         val real = model as? DualModelRef
             ?: throw IllegalArgumentException("unexpected model handle")
-        if (real.format == null) {
-            return dolphinCtcEngine.transcribe(real.delegate, audioPath, languageMode, language)
+        return when (real.backend) {
+            Backend.GGML -> ggmlEngine.transcribe(real.delegate, audioPath, languageMode, language)
+            Backend.ONNX -> onnxEngine.transcribe(real.delegate, audioPath, languageMode, language)
+            Backend.DOLPHIN_CTC -> dolphinCtcEngine.transcribe(real.delegate, audioPath, languageMode, language)
+            Backend.DOLPHIN_ATTN -> dolphinAttnEngine.transcribe(real.delegate, audioPath, languageMode, language)
         }
-        return engineFor(real.format).transcribe(real.delegate, audioPath, languageMode, language)
     }
 
     override fun release(model: WhisperModelRef) {
         val real = model as? DualModelRef ?: return
-        if (real.format == null) {
-            dolphinCtcEngine.release(real.delegate)
-            Log.i(TAG, "released Dolphin CTC model")
-            return
+        when (real.backend) {
+            Backend.GGML -> ggmlEngine.release(real.delegate)
+            Backend.ONNX -> onnxEngine.release(real.delegate)
+            Backend.DOLPHIN_CTC -> dolphinCtcEngine.release(real.delegate)
+            Backend.DOLPHIN_ATTN -> dolphinAttnEngine.release(real.delegate)
         }
-        engineFor(real.format).release(real.delegate)
-        Log.i(TAG, "released model (format ${real.format})")
+        Log.i(TAG, "released model (backend ${real.backend})")
     }
 
     private companion object {

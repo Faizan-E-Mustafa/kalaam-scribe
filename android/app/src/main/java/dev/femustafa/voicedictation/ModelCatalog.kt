@@ -18,6 +18,14 @@ package dev.femustafa.voicedictation
  *   Files are a single `model.onnx`/`model.int8.onnx` + `tokens.txt` (no
  *   encoder/decoder split). sherpa-onnx auto-detects the language, so these are all
  *   [LanguageMode.Auto] and the language setting is ignored.
+ * - [dolphinAttnModels] — Dolphin attention ASR (DataoceanAI) ONNX encoder+decoder
+ *   pairs (dataocean-dolphin-asr), loaded by [DolphinAttnEngine] directly through
+ *   onnxruntime-android. Unlike the CTC family, these honor an explicit `ur`/`PK`
+ *   language pin via `language_start`/`language_end`, so they are the models that
+ *   respect the app's language selection for Urdu. Files are an encoder.onnx +
+ *   a graph-surgeried decoder.onnx (full-logits output) + a shared `units.txt`
+ *   vocabulary (decision: decode from `units.txt` only; `bpe.model` is published
+ *   but unnecessary for decoding). Precision tier is fp16/arm.
  *
  * Sources:
  * - Roman-Urdu are conversions of `cheetos18/whisper-small-roman-urdu` hosted on
@@ -27,6 +35,8 @@ package dev.femustafa.voicedictation
  *   `.onnx` and int8 `.int8.onnx` files).
  * - Dolphin CTC from `csukuangfj/sherpa-onnx-dolphin-*-ctc-multi-lang*` HuggingFace
  *   repos (`model.onnx`/`model.int8.onnx` + `tokens.txt` files).
+ * - Dolphin attention from the project's own HuggingFace repo `dolphin-attn/`
+ *   (encoder/decoder onnx pairs + shared units.txt vocabulary).
  */
 data class CatalogEntry(
     /** The domain [Model] this entry selects (id, fileName, languageMode). */
@@ -65,6 +75,9 @@ object ModelCatalog {
         "https://huggingface.co/csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-2025-04-02/resolve/main"
     const val SHERPA_ONNX_DOLPHIN_SMALL_INT8 =
         "https://huggingface.co/csukuangfj/sherpa-onnx-dolphin-small-ctc-multi-lang-int8-2025-04-02/resolve/main"
+
+    /** Project-hosted Dolphin attention ASR ONNX pairs (encoder/decoder + units). */
+    const val DOLPHIN_ATTN_HF = "$RU_HF/dolphin-attn"
 
     /** GGML (whisper.cpp) catalog: quantized `.bin` models. */
     val ggmlModels: List<CatalogEntry> = listOf(
@@ -281,6 +294,31 @@ object ModelCatalog {
         ),
     )
 
+    /**
+     * Dolphin attention ASR catalog (DataoceanAI, exported by DakeQQ). These are
+     * ONNX encoder + decoder.onnx pairs (the decoder is graph-surgeried to expose
+     * the full logits output) + a shared `units.txt` vocabulary, loaded directly
+     * through onnxruntime-android by [DolphinAttnEngine]. Decoding honors an
+     * explicit `ur`/`PK` language pin, so unlike the CTC family these respect
+     * the app's language setting for Urdu. Ships the fp16/arm tier; the decoder
+     * filename is `<id>-decoder.onnx` (verts to `.onnx`, NOT int8, since fp16) and
+     * the shared vocab is `dolphin-attn-units.txt`.
+     */
+    val dolphinAttnModels: List<CatalogEntry> = listOf(
+        dolphinAttn(
+            id = "dolphin-attn-base",
+            displayName = "Dolphin Attn · base",
+            encoderUrl = "$DOLPHIN_ATTN_HF/base/encoder.onnx",
+            approxSizeMb = 124,
+        ),
+        dolphinAttn(
+            id = "dolphin-attn-small",
+            displayName = "Dolphin Attn · small",
+            encoderUrl = "$DOLPHIN_ATTN_HF/small/encoder.onnx",
+            approxSizeMb = 378,
+        ),
+    )
+
     /** Build one Dolphin CTC [CatalogEntry] with a unique model + tokens filename. */
     private fun dolphinCtc(
         id: String,
@@ -298,6 +336,26 @@ object ModelCatalog {
         approxSizeMb = approxSizeMb,
         isDefault = false,
         precision = precision,
+    )
+
+    /**
+     * Build one Dolphin attention [CatalogEntry]. The language mode is Auto and
+     * [Model.canOverrideLanguage] is true so the user's language selection is
+     * honored: the engine uses it to drive the `ur`/`PK` pin (unlike CTC).
+     */
+    private fun dolphinAttn(
+        id: String,
+        displayName: String,
+        encoderUrl: String,
+        approxSizeMb: Long,
+    ): CatalogEntry = CatalogEntry(
+        model = Model(id = id, fileName = "$id-encoder.onnx", languageMode = LanguageMode.Auto),
+        displayName = displayName,
+        sourceUrl = null,
+        onnxSourceUrl = encoderUrl,
+        approxSizeMb = approxSizeMb,
+        isDefault = false,
+        precision = ModelPrecision.FP16,
     )
 
     /** Build one ONNX [CatalogEntry] with its tier-correct encoder filename. */
@@ -326,9 +384,9 @@ object ModelCatalog {
     val default: CatalogEntry
         get() = ggmlModels.first { it.isDefault }
 
-    /** Look up by model id across all three catalogs. */
+    /** Look up by model id across all four catalogs. */
     fun byId(id: String): CatalogEntry? =
-        (ggmlModels + onnxModels + dolphinCtcModels).firstOrNull { it.model.id == id }
+        (ggmlModels + onnxModels + dolphinCtcModels + dolphinAttnModels).firstOrNull { it.model.id == id }
 
     /** Whether [entry] is a Dolphin CTC model (loaded by [DolphinCtcEngine]). */
     fun isDolphinCtc(entry: CatalogEntry): Boolean =
@@ -337,4 +395,15 @@ object ModelCatalog {
     /** Whether the model file [fileName] belongs to a Dolphin CTC catalog entry. */
     fun isDolphinCtcFileName(fileName: String): Boolean =
         dolphinCtcModels.any { it.model.fileName == fileName }
+
+    /**
+     * Whether [entry] is a Dolphin attention model (loaded by [DolphinAttnEngine]
+     * through onnxruntime-android, honoring the ur/PK pin).
+     */
+    fun isDolphinAttn(entry: CatalogEntry): Boolean =
+        entry in dolphinAttnModels
+
+    /** Whether the model file [fileName] belongs to a Dolphin attention catalog entry. */
+    fun isDolphinAttnFileName(fileName: String): Boolean =
+        dolphinAttnModels.any { it.model.fileName == fileName }
 }

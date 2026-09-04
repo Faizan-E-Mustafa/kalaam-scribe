@@ -29,10 +29,12 @@ enum class ModelFormat {
 /**
  * Numerical precision of an ONNX model file. sherpa-onnx auto-detects quantized
  * (int8) models from `int8` in the filename, so this only chooses which file to
- * point at: full-precision fp32 or quantized int8.
+ * point at: full-precision fp32, half-precision fp16 (fp16/arm tier), or
+ * quantized int8.
  */
 enum class ModelPrecision {
     FP32,
+    FP16,
     INT8,
 }
 
@@ -40,6 +42,7 @@ enum class ModelPrecision {
 val ModelPrecision.label: String
     get() = when (this) {
         ModelPrecision.FP32 -> "fp32"
+        ModelPrecision.FP16 -> "fp16"
         ModelPrecision.INT8 -> "int8"
     }
 
