@@ -388,7 +388,7 @@ class DolphinAttnEngine(
             .toIntArray()
 
     /**
-     * OrtSession.Result is not a Map in onnxruntime 1.24.3: `get(name)` returns
+     * OrtSession.Result is not a Map: `get(name)` returns
      * [java.util.Optional]. Unwrap it to the named tensor (encoder cross-KV outputs
      * or decoder out_{de_key,de_value}/logits outputs); throws if the model did not
      * produce the expected output.

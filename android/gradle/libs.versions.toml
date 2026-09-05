@@ -6,8 +6,8 @@ activityCompose = "1.9.3"
 composeBom = "2024.12.01"
 lifecycle = "2.8.7"
 whisper = "1.0.0"
-sherpaOnnx = "1.13.5"
-onnxruntime = "1.24.3"
+sherpaOnnx = "1.13.4"
+onnxruntime = "1.27.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }

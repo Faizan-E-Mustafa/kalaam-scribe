@@ -113,13 +113,22 @@ of space) to **`~/.cache/dolphin/dakeqq/`** on the home disk. Verify script defa
       NO direct onnxruntime dependency — only sherpa-onnx's bundled native lib. The DakeQQ
       pair runs through ORT directly, so this AAR is required (this is the whole reason the
       new engine is separate from `DolphinCtcEngine`).
-      **Note (2026-09-04)**: ORT pinned to `1.24.3`. Both sherpa-onnx 1.13.5 and this AAR
-      ship a `libonnxruntime.so`; resolved via `packaging.jniLibs.pickFirsts` (keep ONE copy,
-      onnxruntime-android declared first so its 1.24.3 build wins — it also carries the
-      `ai.onnxruntime` JNI glue `libonnxruntime4j_jni.so` used by the engine). Verified the
-      merged APK carries exactly one ORT runtime per ABI (the 1.24.3 one; sherpa's 21.7 MB
-      copy dropped). sherpa's JNI dynamically links the same shared runtime via ORT's stable
-      C API — re-verify on-device in Phase C/D.
+      **Note (2026-09-04, corrected 2026-09-05)**: ORT pinned to `1.24.3`; both sherpa-onnx
+      and this AAR ship a `libonnxruntime.so`, resolved via `packaging.jniLibs.pickFirsts` so
+      the APK carries ONE copy. The "1.24.3 wins / stable C API" assumption was WRONG:
+      Android's linker binds ELF symbols by exact version (`find_verdef_version_index` matches
+      the consumer's required version NAME against the provider's verdefs; only index-1 BASE
+      symbols fall back to the global scope). sherpa-onnx 1.13.5 bundles ORT **1.27.1** and its
+      `libsherpa-onnx-jni.so` needs `OrtGetApiBase@VERS_1.27.1`, which a 1.24.3 provider does
+      not define — sherpa would fail to load at runtime. No `onnxruntime-android` at 1.27.1
+      exists (checked Maven Central AND the ORT v1.27.1 GitHub release assets), so sherpa's
+      bundle is the version lock. **Fix (2026-09-05)**: pin the pair that ships ONE version
+      on both sides — `sherpaOnnx = 1.13.4`, `onnxruntime = 1.27.0` (sherpa 1.13.4 is built
+      and linked against ORT 1.27.0). sherpa-onnx is now sourced from an Ivy repo over its
+      official GitHub-release AAR (JitPack only re-hosts that file). Verified statically:
+      merged APK has exactly one `libonnxruntime.so` per ABI exporting `VERS_1.27.0`, and both
+      `libsherpa-onnx-jni.so` and `libonnxruntime4j_jni.so` require `VERS_1.27.0`. Re-verify
+      on-device in Phase C/D.
 - [x] New `DolphinAttnEngine.kt` implementing `WhisperEngine`:
       - **load**: open ORT sessions for encoder + decoder; load vocab.
       - **transcribe**: encoder (raw int16 in-graph) → prefill `<sos><ur><PK><asr><nots>`
@@ -194,7 +203,7 @@ inherent to greedy; beam ≥2 restores the rescue path at ~8× decode cost. Lang
 (ur/PK) is independent of beam size, so greedy keeps the Urdu guarantee.
 
 **Latency levers evaluated and abandoned:** fp32 precision tier — laptop (ORT 1.24.3, the
-phone's ORT) shows only ~1.4× per-step speedup (22.3 ms fp16 vs 15.5 ms fp32) for doubling
+phone's ORT when measured) shows only ~1.4× per-step speedup (22.3 ms fp16 vs 15.5 ms fp32) for doubling
 the download (126→252 MB); not worth it. NNAPI delegate / int8 quantization / beam>1
 deferred as non-goals or accuracy risks.
 
@@ -221,3 +230,17 @@ for both variants — reconfirms the decoder MUST use the FULL-logits output for
   in the app-size picture (ticket 25).
 
 ## Comments
+
+- **2026-09-05**: Fixed the runtime ORT conflict. sherpa-onnx 1.13.5 bundles ORT 1.27.1 but
+  no `onnxruntime-android` 1.27.1 exists anywhere (Maven Central or the ORT v1.27.1 GitHub
+  release assets), and Android's linker requires an exact ELF symbol-version match — so the
+  old "1.24.3 wins via pickFirst" arrangement would fail to load sherpa at runtime. Aligned
+  the pair to `sherpaOnnx = 1.13.4` + `onnxruntime = 1.27.0` (sherpa 1.13.4 is built/linked
+  against ORT 1.27.0). sherpa-onnx now resolves from its official GitHub-release AAR via an
+  Ivy repo in `settings.gradle.kts` (`@aar`; JitPack was never going to build the tag).
+  Verified in the merged APK: exactly one `libonnxruntime.so` per ABI exporting `VERS_1.27.0`,
+  with both `libsherpa-onnx-jni.so` and `libonnxruntime4j_jni.so` requiring `VERS_1.27.0`.
+  **On-device re-verify (2026-09-05) DONE**: installed via `adb install -r` on the A50 and
+  drove both engines — `SherpaWhisperEngine: loading ONNX sherpa-onnx model with full config`
+  (libsherpa-onnx-jni.so resolved) and a DolphinAttn 4.0 s beam decode (`decodeMs=1208`).
+  No crash, process stable (same PID survived); unit tests green.

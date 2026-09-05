@@ -13,7 +13,7 @@ Integrate sherpa‑onnx into the Android app, enabling `initial_prompt` support 
 - [ ] Transcription output stays in Roman Urdu/Latin script without English leakage on typical short clips — requires full PCM frame pipeline + ONNX model conversion (ticket #21)
 
 ## Notes
-- sherpa‑onnx Java API 1.13.5 does not have `setVadEnable()` or `setInitialPrompt()` methods
+- sherpa‑onnx Java API 1.13.4 does not have `setVadEnable()` or `setInitialPrompt()` methods
 - VAD handled by separate `Vad` class with `SileroVadModelConfig` (not via `OfflineRecognizerConfig`)
 - `initial_prompt` not supported in Java API; maintainer confirms "no plan to add it" (issue #2295)
 - Workaround: `language="en"` in `OfflineWhisperModelConfig` keeps Roman Urdu output in Latin script
@@ -28,7 +28,8 @@ Integrate sherpa‑onnx into the Android app, enabling `initial_prompt` support 
   change takes effect. Dolphin CTC has no language field (issue #2587, feature #3904).
 
 ## Dependencies
-- sherpa‑onnx 1.13.5 (Java API + native libs via JitPack)
+- sherpa‑onnx 1.13.4 (Java API + native libs via GitHub-release ivy repo — see
+  ticket 29 dependency realignment; JitPack only re-hosts the official AAR)
 - Android NDK toolchain
 - Updated `WhisperEngine` interface — `SherpaWhisperEngine` implements `WhisperEngine`
 - Model conversion GGML→ONNX (ticket #21)
@@ -37,7 +38,7 @@ Integrate sherpa‑onnx into the Android app, enabling `initial_prompt` support 
 sherpa-onnx, prompt, VAD, NDK, thread-count, Roman-Urdu
 
 ## Implementation Summary
- sherpa-onnx Java API 1.13.5 compiles successfully. Key API patterns confirmed:
+ sherpa-onnx Java API 1.13.4 compiles successfully. Key API patterns confirmed:
 - `OfflineRecognizerConfig.builder().setOfflineModelConfig().setDecodingMethod().build()`
 - `OfflineModelConfig.builder().setNumThreads().setDebug().setWhisper().build()`
 - VAD via separate `Vad` + `SileroVadModelConfig` 

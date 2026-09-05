@@ -48,10 +48,12 @@ android {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
         // Both sherpa-onnx and onnxruntime-android ship their own libonnxruntime.so.
-        // They are the same shared runtime loaded by name, so keep exactly one copy.
-        // onnxruntime-android is declared first so its 1.24.3 build wins: it is the
-        // newer runtime (a superset of the C API sherpa 1.13.5 needs) and provides the
-        // ai.onnxruntime JNI symbols the DolphinAttnEngine compiles against.
+        // Keep exactly one copy per ABI (both are the ORT 1.27.0 build: sherpa-onnx
+        // 1.13.4 bundles and links against ORT 1.27.0). The two must stay version-locked
+        // — Android's linker matches ELF symbols by exact version (sherpa's
+        // libsherpa-onnx-jni.so and onnxruntime's libonnxruntime4j_jni.so both require
+        // OrtGetApiBase@VERS_1.27.0), so a mismatched runtime fails to load at runtime.
+        // See docs/adr/0005-shared-libonnxruntime-version-lockstep.md.
         jniLibs {
             pickFirsts += listOf(
                 "**/libonnxruntime.so",
@@ -74,11 +76,15 @@ dependencies {
     implementation(libs.androidx.material.icons)
 
     // onnxruntime-android first: its libonnxruntime.so wins the pickFirst merge below
-    // (see packaging.jniLibs.pickFirsts), keeping one shared ORT runtime that serves
-    // both sherpa-onnx and the DolphinAttnEngine.
+    // (see packaging.jniLibs.pickFirsts). Its copy is baked in as the one shared ORT
+    // runtime; it also carries the ai.onnxruntime JNI glue (libonnxruntime4j_jni.so)
+    // that DolphinAttnEngine uses. Keep sherpaOnnx and onnxruntime in lockstep (both
+    // 1.27.0) — see libs.versions.toml.
     implementation(libs.onnxruntime.android)
 
-    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.13.5")
+    // @aar: the sherpa-onnx GitHub-release ivy repo (settings.gradle.kts) serves a
+    // bare AAR with no POM, so the extension must be pinned or AGP treats it as a JAR.
+    implementation("com.github.k2-fsa.sherpa-onnx:sherpa-onnx:${libs.versions.sherpaOnnx.get()}@aar")
 
     implementation(libs.whisper.android)
 

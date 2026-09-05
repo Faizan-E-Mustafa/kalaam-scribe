@@ -16,10 +16,13 @@ Debug APK `android/app/build/outputs/apk/debug/app-debug.apk` ≈ **108 MB**
 ### 1. Native libs — `lib/` ≈ 87 MB (80%)
 
 - `libonnxruntime.so` ≈ **59 MB** across 3 ABIs (arm64-v8a 20.68, x86_64 23.84,
-  armeabi-v7a 14.33). Bundled by `com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.13.5`
+  armeabi-v7a 14.33). Bundled by `com.github.k2-fsa.sherpa-onnx:sherpa-onnx:1.13.4`
   (its AAR ships 119.66 MB native total, filtered to 3 ABIs by
   `ndk.abiFilters`). **Required** for ONNX inference — not reducible without
   dropping ONNX support.
+  <!-- sizes above are from the pre-2026-09-05 build; after the ORT realignment
+       (1.24.3→1.27.0, ticket 29) libonnxruntime comes from onnxruntime-android 1.27.0
+       and measures arm64-v8a 27.98 / x86_64 33.97 / armeabi-v7a 20.00 MB. -->
 - `sherpa-onnx-jni.so` / `sherpa-onnx-c-api.so` / `sherpa-onnx-cxx-api.so`
   ≈ **15 MB** across 3 ABIs. Part of sherpa-onnx, required.
 - `libwhisper.so` ≈ 1.5 MB (arm64 only) from `dev.ffmpegkit-maintained:whisper-android`.
