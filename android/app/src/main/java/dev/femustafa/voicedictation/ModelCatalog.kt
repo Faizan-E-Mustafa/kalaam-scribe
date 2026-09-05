@@ -8,7 +8,7 @@ package dev.femustafa.voicedictation
  * - [ggmlModels] — quantized whisper.cpp GGML `.bin` models (q4_0, q8_0, q5_1…),
  *   loaded by [AarWhisperEngine].
  * - [onnxModels] — sherpa-onnx Whisper ONNX models. Organized by ONNX model
- *   identity (`tiny`, `tiny.en`, `base.en`, `small`), each offered in two precision
+ *   identity (`tiny`, `tiny.en`, `base.en`, `small`, `roman-urdu`), each offered in two precision
  *   tiers: [ModelPrecision.FP32] (full) and [ModelPrecision.INT8] (quantized),
  *   loaded by [SherpaWhisperEngine]. Quantization is a GGML concept on the GGML
  *   side; on the ONNX side we offer int8 as a distinct tier.
@@ -29,7 +29,8 @@ package dev.femustafa.voicedictation
  *
  * Sources:
  * - Roman-Urdu are conversions of `cheetos18/whisper-small-roman-urdu` hosted on
- *   the project's own HuggingFace repo (see [RU_HF]). GGML-only; no ONNX export.
+ *   the project's own HuggingFace repo (see [RU_HF]). GGML (`ggml-*.bin`) plus ONNX
+ *   (`roman-urdu-{encoder,decoder}.onnx` / `.int8.onnx` + shared `roman-urdu-tokens.txt`).
  * - GGML English/multilingual from `ggerganov/whisper.cpp` HuggingFace repo.
  * - ONNX Whisper from `csukuangfj/sherpa-onnx-whisper-*` HuggingFace repos (fp32
  *   `.onnx` and int8 `.int8.onnx` files).
@@ -253,6 +254,23 @@ object ModelCatalog {
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_SMALL/small-encoder.int8.onnx",
             approxSizeMb = 375,
+        ),
+        // Roman-Urdu (fine-tune of whisper-small) — fp32 + int8
+        onnx(
+            id = "roman-urdu-fp32",
+            displayName = "Roman-Urdu (fp32)",
+            languageMode = LanguageMode.RomanUrdu,
+            precision = ModelPrecision.FP32,
+            encoderUrl = "$RU_HF/roman-urdu-encoder.onnx",
+            approxSizeMb = 925,
+        ),
+        onnx(
+            id = "roman-urdu-int8",
+            displayName = "Roman-Urdu (int8)",
+            languageMode = LanguageMode.RomanUrdu,
+            precision = ModelPrecision.INT8,
+            encoderUrl = "$RU_HF/roman-urdu-encoder.int8.onnx",
+            approxSizeMb = 359,
         ),
     )
 

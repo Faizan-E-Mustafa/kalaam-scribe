@@ -16,14 +16,14 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun onnxCatalogHasFiveIdentitiesInTwoPrecisionTiers() {
-        // 5 ONNX model identities (tiny, tiny.en, base.en, base, small) × 2 tiers (fp32, int8).
-        assertEquals(10, ModelCatalog.onnxModels.size)
+    fun onnxCatalogHasSixIdentitiesInTwoPrecisionTiers() {
+        // 6 ONNX model identities (tiny, tiny.en, base.en, base, small, roman-urdu) × 2 tiers (fp32, int8).
+        assertEquals(12, ModelCatalog.onnxModels.size)
         assertEquals(ModelPrecision.FP32, ModelCatalog.onnxModels.first().precision)
         assertTrue(ModelCatalog.onnxModels.all { it.precision != null })
         // Each identity is offered in both fp32 and int8.
         val ids = ModelCatalog.onnxModels.map { it.model.id }
-        for (identity in listOf("tiny", "tiny.en", "base.en", "base", "small")) {
+        for (identity in listOf("tiny", "tiny.en", "base.en", "base", "small", "roman-urdu")) {
             assertTrue("missing fp32 for $identity", ids.contains("$identity-fp32"))
             assertTrue("missing int8 for $identity", ids.contains("$identity-int8"))
         }
@@ -133,6 +133,28 @@ class ModelCatalogTest {
         assertTrue(ruQ4.sourceUrl!!.startsWith(ModelCatalog.RU_HF))
         assertTrue(ruQ4.sourceUrl!!.endsWith(ruQ4.model.fileName))
         assertTrue(ruF16.sourceUrl!!.endsWith(ruF16.model.fileName))
+    }
+
+    @Test
+    fun romanUrduOnnxModelsUseFixedEnglishAndProjectRepo() {
+        val ruFp32 = ModelCatalog.byId("roman-urdu-fp32")!!
+        val ruInt8 = ModelCatalog.byId("roman-urdu-int8")!!
+
+        // Fixed `en`, never overridable — same rule as the GGML Roman-Urdu models.
+        assertEquals(LanguageMode.RomanUrdu, ruFp32.model.languageMode)
+        assertEquals(LanguageMode.RomanUrdu, ruInt8.model.languageMode)
+        assertFalse(ruFp32.model.canOverrideLanguage)
+        assertFalse(ruInt8.model.canOverrideLanguage)
+        // ONNX-only: hosted in the project's Roman-Urdu HF repo, no GGML source.
+        assertNull(ruFp32.sourceUrl)
+        assertNull(ruInt8.sourceUrl)
+        assertTrue(ruFp32.onnxSourceUrl!!.startsWith(ModelCatalog.RU_HF))
+        assertTrue(ruInt8.onnxSourceUrl!!.startsWith(ModelCatalog.RU_HF))
+        // Identity-based remote names shared across tiers (fp32: .onnx, int8: .int8.onnx).
+        assertTrue(ruFp32.onnxSourceUrl!!.endsWith("roman-urdu-encoder.onnx"))
+        assertTrue(ruInt8.onnxSourceUrl!!.endsWith("roman-urdu-encoder.int8.onnx"))
+        assertEquals("roman-urdu-fp32-encoder.onnx", ruFp32.model.fileName)
+        assertEquals("roman-urdu-int8-encoder.int8.onnx", ruInt8.model.fileName)
     }
 
     @Test

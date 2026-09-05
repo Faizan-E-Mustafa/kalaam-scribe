@@ -1,4 +1,5 @@
-# Large converted model — do not commit (251 MB).
+# Large converted models — do not commit (hosted on HuggingFace).
 ggml-model-*.bin
+onnx-out/
 # User voice recordings and converted clips.
 samples/

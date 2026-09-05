@@ -69,7 +69,8 @@ data class Model(
 
 /** The Roman-Urdu conversion Model ids. Their output must stay Roman/Latin (`en`), never `ur`. */
 fun isRomanUrdu(modelId: String): Boolean =
-    modelId == "roman-urdu-q4_0" || modelId == "roman-urdu-f16"
+    modelId == "roman-urdu-q4_0" || modelId == "roman-urdu-f16" ||
+        modelId == "roman-urdu-fp32" || modelId == "roman-urdu-int8"
 
 /**
  * The languages the whisper AAR supports for `WhisperConfig.language`.
