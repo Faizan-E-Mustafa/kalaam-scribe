@@ -81,5 +81,41 @@ internal fun segmentAudioWithVad(
     return out
 }
 
+/**
+ * Stateful live drainer for streaming VAD: feeds one window at a time via [push] and
+ * immediately returns any segments the VAD closed during that chunk. Use [flushAndDrain]
+ * at end-of-input to surface the trailing tail segment.
+ *
+ * This is the core of simulated streaming ASR (ticket 31): the capture thread calls
+ * [push] with each mic frame and the decoded segments are emitted in capture order.
+ */
+internal class LiveVadDrainer(private val vad: VadLike) {
+
+    /** Push one window (up to [VAD_WINDOW] samples) to the VAD and return any
+     *  segments it just closed. Empty list = no closed segments this window. */
+    fun push(window: FloatArray): List<SpeechUtterance> {
+        if (window.isEmpty()) return emptyList()
+        vad.acceptWaveform(window)
+        if (!vad.isSpeechDetected()) return emptyList()
+        return drainQueue()
+    }
+
+    /** Signal end-of-input: flush the VAD's internal buffer and return the
+     *  trailing tail segment(s), if any. */
+    fun flushAndDrain(): List<SpeechUtterance> {
+        vad.flush()
+        return drainQueue()
+    }
+
+    private fun drainQueue(): List<SpeechUtterance> {
+        val out = mutableListOf<SpeechUtterance>()
+        while (!vad.isEmpty()) {
+            vad.front()?.let { out += it }
+            vad.pop()
+        }
+        return out
+    }
+}
+
 /** The Silero VAD window: the graph consumes this many samples per `acceptWaveform`. */
 internal const val VAD_WINDOW = 512

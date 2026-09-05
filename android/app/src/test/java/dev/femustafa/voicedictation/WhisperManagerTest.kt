@@ -22,19 +22,30 @@ class WhisperManagerTest {
 
     private class FakeHandle : WhisperModelRef
 
+    private class FakeSession : TranscriptionSession {
+        override fun accept(samples: ShortArray) = Unit
+        override val partials = kotlinx.coroutines.flow.MutableSharedFlow<String>()
+        override suspend fun flush(): String = "SESSION_TEXT"
+        override fun close() = Unit
+    }
+
     private class FakeEngine : WhisperEngine {
         var loadCount = 0
         val released = mutableListOf<WhisperModelRef>()
         val transcribeCalls = mutableListOf<Triple<String, LanguageMode, String?>>()
-
-        /** Number of times transcribe() was entered (before any gate). */
-        var transcribeEntryCount = 0
+        val createSessionCalls = mutableListOf<Triple<WhisperModelRef, LanguageMode, String?>>()
 
         /** When set, load()/transcribe() wait here once the caller signals entry. */
         var gate: CompletableDeferred<Unit>? = null
 
         /** Signal, usable for awaiting an actual suspension point (avoid busy-wait). */
         val transcribeEntered = CompletableDeferred<Unit>()
+
+        /** When true, [createSession] returns a fake streaming session. */
+        var sessionSupport = false
+
+        /** Number of times transcribe() was entered (before any gate). */
+        var transcribeEntryCount = 0
 
         override suspend fun load(modelPath: String): WhisperModelRef {
             gate?.await()
@@ -53,6 +64,15 @@ class WhisperManagerTest {
             gate?.await()
             transcribeCalls += Triple(audioPath, languageMode, language)
             return "text"
+        }
+
+        override suspend fun createSession(
+            model: WhisperModelRef,
+            languageMode: LanguageMode,
+            language: String?,
+        ): TranscriptionSession? {
+            createSessionCalls += Triple(model, languageMode, language)
+            return if (sessionSupport) FakeSession() else null
         }
 
         override fun release(model: WhisperModelRef) {
@@ -189,5 +209,71 @@ class WhisperManagerTest {
         assertEquals(2, engine.transcribeEntryCount)
         assertEquals(2, engine.transcribeCalls.size)
         assertEquals(1, engine.loadCount)
+    }
+
+    @Test
+    fun createSessionReturnsNullForNonStreamingEngine() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+        manager.switchTo(english)
+
+        val session = manager.createSession()
+
+        assertNull(session)
+        // Model loaded once for the session attempt, reused.
+        assertEquals(1, engine.loadCount)
+    }
+
+    @Test
+    fun createSessionWithoutModelReturnsNull() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+        engine.sessionSupport = true
+
+        val session = manager.createSession()
+
+        assertNull(session)
+        assertEquals(0, engine.loadCount)
+    }
+
+    @Test
+    fun createSessionReturnsStreamingSessionFromEngine() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+        engine.sessionSupport = true
+        manager.switchTo(english)
+
+        val session = manager.createSession()
+
+        assertEquals("SESSION_TEXT", session?.flush())
+        assertEquals(1, engine.createSessionCalls.size)
+        // Model still resident, not reloaded.
+        assertEquals(1, engine.loadCount)
+    }
+
+    @Test
+    fun createSessionAppliesLanguageResolutionLikeTranscribe() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine)
+        engine.sessionSupport = true
+        val multilingual = Model(id = "multilingual-tiny", fileName = "ggml-tiny.bin", languageMode = LanguageMode.Auto)
+        manager.switchTo(multilingual)
+        manager.setLanguageCode("de")
+
+        val first = manager.createSession()
+
+        val (_, mode, lang) = engine.createSessionCalls.single()
+        assertEquals(LanguageMode.Auto, mode)
+        assertEquals("de", lang)
+        // Close the open session so the resident model is free again.
+        first?.close()
+
+        // Fixed-English models never receive the user override.
+        manager.switchTo(english)
+        val second = manager.createSession()
+        val (_, mode2, lang2) = engine.createSessionCalls.last()
+        assertEquals(LanguageMode.English, mode2)
+        assertNull(lang2)
+        second?.close()
     }
 }

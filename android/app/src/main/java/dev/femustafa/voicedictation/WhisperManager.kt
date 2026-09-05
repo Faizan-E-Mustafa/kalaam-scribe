@@ -2,10 +2,12 @@ package dev.femustafa.voicedictation
 
 import androidx.annotation.VisibleForTesting
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Guards the resident-model lifecycle (ADR 0004): one Model stays loaded in memory
@@ -37,6 +39,14 @@ class WhisperManager(
 
     private val mutation = Mutex()
     private val transcriptionMutex = Mutex()
+
+    /**
+     * Held for the whole lifetime of a streaming [TranscriptionSession]:
+     * [switchTo]/[shutdown] acquire it too, so a resident model can never be unloaded
+     * while a session that borrows it is still open (the service holds the session for
+     * the full recording).
+     */
+    private val sessionMutex = Mutex()
 
     /** The currently resident [Model], or null before the first load. */
     val currentModel: Model?
@@ -90,24 +100,60 @@ class WhisperManager(
         transcriptionMutex.withLock { doTranscribe(audioPath) }
 
     /**
+     * Open a live transcription session for the resident model (loading it first if
+     * needed), or null when the model's backend cannot stream or no model is set. The
+     * session borrows the resident model for its whole lifetime; [switchTo]/[shutdown]
+     * wait until it is flushed or closed.
+     */
+    suspend fun createSession(): TranscriptionSession? {
+        sessionMutex.lock()
+        val session = try {
+            val ref = ensureLoaded()
+            if (ref == null) {
+                null
+            } else {
+                val resident = residentModel!!
+                val languageMode = resident.languageMode
+                // Same language resolution as [doTranscribe]: only multilingual Models
+                // take the user-selected code.
+                val language = resident.canOverrideLanguage.takeIf { it }?.let {
+                    _languageCode.value
+                }
+                engine.createSession(ref, languageMode, language)
+            }
+        } catch (t: Throwable) {
+            sessionMutex.unlock()
+            throw t
+        }
+        if (session == null) {
+            sessionMutex.unlock()
+            return null
+        }
+        return SessionEndGuard(session) { sessionMutex.unlock() }
+    }
+
+    /**
      * Switch the resident Model: unload the current one and load [newModel].
      * Noticeably slower than dictation (a new file is loaded). Waits for any
-     * in-flight transcription to finish so a model is never unloaded mid-run.
+     * in-flight transcription OR open streaming session to finish so a model is
+     * never unloaded mid-run.
      */
     suspend fun switchTo(newModel: Model) {
-        transcriptionMutex.withLock {
-            mutation.withLock {
-                // Skip the expensive reload when the requested model is already
-                // the resident one (e.g. the user re-taps the selected row).
-                if (residentModel?.id == newModel.id && resident != null) return
-                _status.value = Status.Loading
-                try {
-                    unloadLocked()
-                    val ref = engine.load(absolutePath(newModel))
-                    resident = ref
-                    residentModel = newModel
-                } finally {
-                    _status.value = Status.Idle
+        sessionMutex.withLock {
+            transcriptionMutex.withLock {
+                mutation.withLock {
+                    // Skip the expensive reload when the requested model is already
+                    // the resident one (e.g. the user re-taps the selected row).
+                    if (residentModel?.id == newModel.id && resident != null) return
+                    _status.value = Status.Loading
+                    try {
+                        unloadLocked()
+                        val ref = engine.load(absolutePath(newModel))
+                        resident = ref
+                        residentModel = newModel
+                    } finally {
+                        _status.value = Status.Idle
+                    }
                 }
             }
         }
@@ -115,8 +161,10 @@ class WhisperManager(
 
     /** Unload the resident Model and free its memory (e.g. on app shutdown). */
     suspend fun shutdown() {
-        mutation.withLock {
-            unloadLocked()
+        sessionMutex.withLock {
+            mutation.withLock {
+                unloadLocked()
+            }
         }
     }
 
@@ -141,4 +189,34 @@ class WhisperManager(
 
     @VisibleForTesting
     internal fun residentHandle(): WhisperModelRef? = resident
+}
+
+/**
+ * Releases [onEnd] exactly once when the wrapped session is flushed or closed, so
+ * [WhisperManager.sessionMutex] never stays held by an abandoned recording.
+ */
+private class SessionEndGuard(
+    private val delegate: TranscriptionSession,
+    private val onEnd: () -> Unit,
+) : TranscriptionSession {
+    private val ended = AtomicBoolean(false)
+
+    override fun accept(samples: ShortArray) = delegate.accept(samples)
+
+    override val partials: SharedFlow<String> = delegate.partials
+
+    override suspend fun flush(): String {
+        val text = delegate.flush()
+        end()
+        return text
+    }
+
+    override fun close() {
+        delegate.close()
+        end()
+    }
+
+    private fun end() {
+        if (ended.compareAndSet(false, true)) onEnd()
+    }
 }

@@ -89,6 +89,22 @@ class DualFormatWhisperEngine(
         }
     }
 
+    override suspend fun createSession(
+        model: WhisperModelRef,
+        languageMode: LanguageMode,
+        language: String?,
+    ): TranscriptionSession? {
+        val real = model as? DualModelRef
+            ?: throw IllegalArgumentException("unexpected model handle")
+        return when (real.backend) {
+            // The whisper.cpp GGML backend has no incremental API — batch only.
+            Backend.GGML -> null
+            Backend.ONNX -> onnxEngine.createSession(real.delegate, languageMode, language)
+            Backend.DOLPHIN_CTC -> dolphinCtcEngine.createSession(real.delegate, languageMode, language)
+            Backend.DOLPHIN_ATTN -> dolphinAttnEngine.createSession(real.delegate, languageMode, language)
+        }
+    }
+
     override fun release(model: WhisperModelRef) {
         val real = model as? DualModelRef ?: return
         when (real.backend) {
