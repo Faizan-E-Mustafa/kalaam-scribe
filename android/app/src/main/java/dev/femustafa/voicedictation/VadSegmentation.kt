@@ -5,16 +5,21 @@ import kotlin.math.min
 
 /**
  * A speech utterance returned by a [VadLike]: its start sample index (16 kHz) and the
- * normalized [-1,1] float samples (the scale sherpa's Silero pipeline consumes).
+ * normalized [-1,1] float samples (the scale sherpa's pipeline consumes).
  */
-internal data class SpeechUtterance(val start: Int, val samples: FloatArray) {
+internal data class SpeechSegment(val start: Int, val samples: FloatArray, val sampleRate: Int = SAMPLE_RATE) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
-        if (other !is SpeechUtterance) return false
-        return start == other.start && samples.contentEquals(other.samples)
+        if (other !is SpeechSegment) return false
+        return start == other.start && samples.contentEquals(other.samples) && sampleRate == other.sampleRate
     }
 
-    override fun hashCode(): Int = 31 * start + samples.contentHashCode()
+    override fun hashCode(): Int {
+        var result = start
+        result = 31 * result + samples.contentHashCode()
+        result = 31 * result + sampleRate
+        return result
+    }
 }
 
 /**
@@ -26,7 +31,7 @@ internal interface VadLike {
     fun acceptWaveform(samples: FloatArray)
     fun isSpeechDetected(): Boolean
     fun isEmpty(): Boolean
-    fun front(): SpeechUtterance?
+    fun front(): SpeechSegment?
     fun pop()
     fun flush()
 }
@@ -40,8 +45,7 @@ internal class SherpaVad(private val vad: Vad) : VadLike {
     override fun acceptWaveform(samples: FloatArray) = vad.acceptWaveform(samples)
     override fun isSpeechDetected(): Boolean = vad.isSpeechDetected()
     override fun isEmpty(): Boolean = vad.empty()
-    override fun front(): SpeechUtterance? =
-        vad.front()?.let { SpeechUtterance(it.start, it.samples) }
+    override fun front(): SpeechSegment? = vad.front()?.let { SpeechSegment(it.start, it.samples, SAMPLE_RATE) }
     override fun pop() = vad.pop()
     override fun flush() = vad.flush()
 }
@@ -59,8 +63,8 @@ internal fun segmentAudioWithVad(
     samples: FloatArray,
     vad: VadLike,
     window: Int = VAD_WINDOW,
-): List<SpeechUtterance> {
-    val out = mutableListOf<SpeechUtterance>()
+): List<SpeechSegment> {
+    val out = mutableListOf<SpeechSegment>()
     var i = 0
     while (i < samples.size) {
         val end = min(i + window, samples.size)
@@ -84,7 +88,7 @@ internal fun segmentAudioWithVad(
 /**
  * Stateful live drainer for streaming VAD: feeds one window at a time via [push] and
  * immediately returns any segments the VAD closed during that chunk. Use [flushAndDrain]
- * at end-of-input to surface the trailing tail segment.
+ * at end-of-input to surface the trailing tail segment(s).
  *
  * This is the core of simulated streaming ASR (ticket 31): the capture thread calls
  * [push] with each mic frame and the decoded segments are emitted in capture order.
@@ -93,7 +97,7 @@ internal class LiveVadDrainer(private val vad: VadLike) {
 
     /** Push one window (up to [VAD_WINDOW] samples) to the VAD and return any
      *  segments it just closed. Empty list = no closed segments this window. */
-    fun push(window: FloatArray): List<SpeechUtterance> {
+    fun push(window: FloatArray): List<SpeechSegment> {
         if (window.isEmpty()) return emptyList()
         vad.acceptWaveform(window)
         if (!vad.isSpeechDetected()) return emptyList()
@@ -102,13 +106,13 @@ internal class LiveVadDrainer(private val vad: VadLike) {
 
     /** Signal end-of-input: flush the VAD's internal buffer and return the
      *  trailing tail segment(s), if any. */
-    fun flushAndDrain(): List<SpeechUtterance> {
+    fun flushAndDrain(): List<SpeechSegment> {
         vad.flush()
         return drainQueue()
     }
 
-    private fun drainQueue(): List<SpeechUtterance> {
-        val out = mutableListOf<SpeechUtterance>()
+    private fun drainQueue(): List<SpeechSegment> {
+        val out = mutableListOf<SpeechSegment>()
         while (!vad.isEmpty()) {
             vad.front()?.let { out += it }
             vad.pop()
@@ -117,5 +121,32 @@ internal class LiveVadDrainer(private val vad: VadLike) {
     }
 }
 
+/**
+ * Simple in-memory [WaveWriter] for accumulating audio samples.
+ */
+internal class InMemoryWaveWriter(private val sampleRate: Int = 16000) : WaveWriter {
+    private val accumulatedSamples = mutableListOf<Float>()
+
+    override fun accept(samples: ShortArray) {
+        accumulatedSamples.addAll(samples.toFloatArray(sampleRate).toList())
+    }
+
+    override fun flush(): WaveWriter.Wave? {
+        if (accumulatedSamples.isEmpty()) return null
+        return WaveWriter.Wave(accumulatedSamples.toFloatArray(), sampleRate)
+    }
+}
+
 /** The Silero VAD window: the graph consumes this many samples per `acceptWaveform`. */
 internal const val VAD_WINDOW = 512
+
+/** The sample rate used by the VAD and the app's mic capture. */
+internal const val SAMPLE_RATE = 16000
+
+// Extension function to convert ShortArray to FloatArray
+internal fun ShortArray.toFloatArray(sampleRate: Int): FloatArray {
+    val floatArray = FloatArray(this.size) {
+        this[it].toFloat() / Short.MAX_VALUE.toFloat()
+    }
+    return floatArray
+}

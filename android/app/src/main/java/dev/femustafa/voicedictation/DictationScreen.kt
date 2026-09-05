@@ -191,6 +191,7 @@ fun DictationScreen(
                 Text(
                     text = when {
                         recording -> "Listening…"
+                        transcribing && transcript != null -> "Finalising…"
                         transcribing -> "Transcribing…"
                         transcript != null -> "Copied to clipboard"
                         error != null -> "Error"
@@ -201,8 +202,10 @@ fun DictationScreen(
                 )
                 Text(
                     text = when {
-                        recording -> "Speak now — tap Stop when done (works in background)"
-                        transcribing -> "Running on-device…"
+                        // While transcribing we keep showing the live transcript (if any)
+                        // so the partials don't suddenly disappear when the user taps Stop.
+                        transcribing -> transcript ?: "Running on-device…"
+                        recording -> transcript ?: "Speak now — tap Stop when done (works in background)"
                         transcript != null -> transcript!!
                         error != null -> error!!
                         else -> "No dictation yet — tap Record"
@@ -210,7 +213,7 @@ fun DictationScreen(
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
                 )
-                if (transcript != null) {
+                if (transcript != null && !recording && !transcribing) {
                     val lastMs = lastTranscriptionMs
                     if (lastMs != null) {
                         Text(

@@ -20,10 +20,10 @@ class EngineTranscriptionSessionTest {
     private fun shortsOf(id: Int, n: Int): ShortArray = ShortArray(n) { id.toShort() }
 
     private class FakeVad(
-        private val segmentPlan: Map<Int, List<SpeechUtterance>> = emptyMap(),
-        private val flushSegments: List<SpeechUtterance> = emptyList(),
+        private val segmentPlan: Map<Int, List<SpeechSegment>> = emptyMap(),
+        private val flushSegments: List<SpeechSegment> = emptyList(),
     ) : VadLike {
-        private val queued = ArrayDeque<SpeechUtterance>()
+        private val queued = ArrayDeque<SpeechSegment>()
         private var speechOnLastChunk = false
         private var chunkIndex = 0
 
@@ -37,7 +37,7 @@ class EngineTranscriptionSessionTest {
 
         override fun isEmpty(): Boolean = queued.isEmpty()
 
-        override fun front(): SpeechUtterance? = queued.firstOrNull()
+        override fun front(): SpeechSegment? = queued.firstOrNull()
 
         override fun pop() {
             if (!queued.isEmpty()) queued.removeFirst()
@@ -53,8 +53,8 @@ class EngineTranscriptionSessionTest {
 
     @Test
     fun segmentsDecodedInCaptureOrderAndJoined() = runBlocking {
-        val seg1 = SpeechUtterance(0, FloatArray(100) { 1f })
-        val seg2 = SpeechUtterance(600, FloatArray(200) { 2f })
+        val seg1 = SpeechSegment(0, FloatArray(100) { 1f })
+        val seg2 = SpeechSegment(600, FloatArray(200) { 2f })
         val vad = FakeVad(segmentPlan = mapOf(1 to listOf(seg1), 2 to listOf(seg2)))
         val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" })
 
@@ -65,7 +65,7 @@ class EngineTranscriptionSessionTest {
         session.accept(shortsOf(1, 1024))
         // One 512 window: chunk 2 (seg2).
         session.accept(shortsOf(2, 512))
-        val full = session.flush()
+        val full = session.flush("")
 
         collector.cancel()
         assertEquals(listOf("len100", "len200"), got)
@@ -74,8 +74,8 @@ class EngineTranscriptionSessionTest {
 
     @Test
     fun flushTailSegmentIsDecodedLastNotRacedAhead() = runBlocking {
-        val early = SpeechUtterance(0, FloatArray(100) { 1f })
-        val tail = SpeechUtterance(900, FloatArray(300) { 3f })
+        val early = SpeechSegment(0, FloatArray(100) { 1f })
+        val tail = SpeechSegment(900, FloatArray(300) { 3f })
         // Speech detected on chunk 0 (early segment); flush surfaces the tail.
         val vad = FakeVad(
             segmentPlan = mapOf(0 to listOf(early)),
@@ -87,7 +87,7 @@ class EngineTranscriptionSessionTest {
         val collector = launch { session.partials.collect { got += it } }
 
         session.accept(shortsOf(1, 512))
-        val full = session.flush()
+        val full = session.flush("")
 
         collector.cancel()
         // Tail segment decoded AFTER the early segment — always last.
@@ -99,17 +99,17 @@ class EngineTranscriptionSessionTest {
     fun noSpeechFallsBackToWholeClipDecode() = runBlocking {
         var wholeAudioSize = -1
         val vad = FakeVad()
-        val session = EngineTranscriptionSession(vad, ::decodeByLength) { audio ->
+        val session = EngineTranscriptionSession(vad, ::decodeByLength, { audio ->
             wholeAudioSize = audio.size
             "FALLBACK"
-        }
+        }, logger = { _, _ -> })
 
         val got = mutableListOf<String>()
         val collector = launch { session.partials.collect { got += it } }
 
         session.accept(shortsOf(1, 512))
         session.accept(shortsOf(2, 256))
-        val full = session.flush()
+        val full = session.flush("")
 
         collector.cancel()
         assertEquals("FALLBACK", full)
@@ -120,26 +120,26 @@ class EngineTranscriptionSessionTest {
 
     @Test
     fun blankSegmentsFallBackToWholeClipDecode() = runBlocking {
-        val seg = SpeechUtterance(0, FloatArray(100) { 1f })
+        val seg = SpeechSegment(0, FloatArray(100) { 1f })
         val vad = FakeVad(segmentPlan = mapOf(0 to listOf(seg)))
         // Every segment decodes to blank → whole-clip fallback (ticket-30 semantics).
-        val session = EngineTranscriptionSession(vad, { "" }, { "FALLBACK" })
+        val session = EngineTranscriptionSession(vad, { "" }, { "FALLBACK" }, logger = { _, _ -> })
 
         session.accept(shortsOf(1, 512))
-        val full = session.flush()
+        val full = session.flush("")
 
         assertEquals("FALLBACK", full)
     }
 
     @Test
     fun acceptYieldsToWorkerBeforeFlushJoins() = runBlocking {
-        val seg = SpeechUtterance(0, FloatArray(100) { 1f })
+        val seg = SpeechSegment(0, FloatArray(100) { 1f })
         val vad = FakeVad(segmentPlan = mapOf(0 to listOf(seg)))
         val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" })
 
         session.accept(shortsOf(1, 512))
         yield()
-        val full = session.flush()
+        val full = session.flush("")
 
         assertEquals("len100", full)
     }

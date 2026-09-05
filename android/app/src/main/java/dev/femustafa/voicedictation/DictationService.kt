@@ -13,12 +13,15 @@ import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import android.os.SystemClock
+import android.util.Log
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 /**
@@ -31,6 +34,12 @@ import kotlinx.coroutines.launch
  *
  * The recording notification is the stop surface: its action stops the capture
  * and starts transcription even with the app closed.
+ *
+ * Streaming (simulated streaming ASR, ticket 31): when the active model supports
+ * a [TranscriptionSession], the service opens one at recording start, wires the
+ * mic's [frameListener] to push samples into the session, and collects [partials]
+ * to grow the on-screen transcript in real time. At Stop, the session is flushed
+ * and its final text is copied/notified exactly like the batch path.
  */
 class DictationService : Service() {
 
@@ -38,6 +47,20 @@ class DictationService : Service() {
     private val recorder = AudioRecorder()
 
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    /** Live streaming session when the active backend supports it; null → batch fallback. */
+    private var streamingSession: TranscriptionSession? = null
+
+    /** Background job that collects [TranscriptionSession.partials] to grow the transcript. */
+    private var partialsJob: Job? = null
+
+    /**
+     * Live transcript accumulated from streaming partials. All reads and writes are
+     * synchronized to avoid races between [partialsJob] (appending) and
+     * [stopAndTranscribe] (snapshotting at Stop).
+     */
+    private val liveTranscript = StringBuilder()
+    private val liveTranscriptLock = Any()
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -61,12 +84,52 @@ class DictationService : Service() {
         app.setError(null)
         app.setTranscript(null)
         app.onRecordingStarted()
+        // Set recording=true IMMEDIATELY so the UI flips to the "Listening…" state
+        // without waiting for the model to load. The mic + session are wired up in
+        // the coroutine below; while that runs, the user may already be speaking.
+        app.setRecording(true)
+
+        // Try to open a live streaming session for the resident model. If the backend
+        // does not support streaming (or the model isn't loaded yet) we fall back to
+        // today's whole-clip batch path.
         serviceScope.launch {
+            val session = try {
+                app.whisper.createSession()
+            } catch (t: Throwable) {
+                Log.w(TAG, "createSession failed; falling back to batch: ${t.message}")
+                null
+            }
+            streamingSession = session
+
+            if (session != null) {
+                synchronized(liveTranscriptLock) { liveTranscript.clear() }
+                // Wire the mic capture to feed the session with each PCM frame.
+                recorder.frameListener = { samples -> session.accept(samples) }
+                // Collect partials on the service scope and grow the on-screen transcript
+                // as each VAD-closed utterance decodes.
+                partialsJob = serviceScope.launch {
+                    session.partials.collectLatest { partial ->
+                        // Append to the running transcript atomically so stopAndTranscribe can
+                        // safely snapshot it without a race.
+                        synchronized(liveTranscriptLock) {
+                            if (liveTranscript.isNotEmpty()) {
+                                liveTranscript.append(' ')
+                            }
+                            liveTranscript.append(partial)
+                            app.setTranscript(liveTranscript.toString())
+                        }
+                        Log.i(TAG, "live partial: $partial")
+                    }
+                }
+            } else {
+                recorder.frameListener = null
+            }
+
             try {
                 recorder.start(java.io.File(filesDir, "dictation.wav"))
-                app.setRecording(true)
             } catch (t: Throwable) {
                 app.setError(t.message ?: "recording failed")
+                app.setRecording(false)
                 stopSelf()
             }
         }
@@ -88,7 +151,31 @@ class DictationService : Service() {
             app.setTranscribing(true)
             try {
                 val start = SystemClock.elapsedRealtime()
-                val text = whisper.transcribe(java.io.File(filesDir, "dictation.wav").absolutePath)
+                val text: String = streamingSession?.let { session ->
+                    // Snapshot the partials accumulated during recording. This is read atomically
+                    // from the synchronized liveTranscript, so we get exactly what the UI showed.
+                    val partialsSnapshot: String
+                    synchronized(liveTranscriptLock) {
+                        partialsSnapshot = liveTranscript.toString()
+                    }
+                    // Cancel the collector, clear the frame listener, flush the session
+                    // (appending only the tail segments the decode worker hasn't emitted yet),
+                    // then close.
+                    partialsJob?.cancel()
+                    partialsJob = null
+                    recorder.frameListener = null
+                    val flushed = session.flush(partialsSnapshot)
+                    try {
+                        session.close()
+                    } catch (t: Throwable) {
+                        Log.w(TAG, "session.close() failed: ${t.message}")
+                    }
+                    streamingSession = null
+                    flushed
+                } ?: run {
+                    // Batch fallback: no live session, run the whole-clip path.
+                    whisper.transcribe(java.io.File(filesDir, "dictation.wav").absolutePath)
+                }
                 app.setLastTranscriptionMs(SystemClock.elapsedRealtime() - start)
                 app.setTranscript(text)
                 val trimmed = text.trim()
@@ -147,6 +234,11 @@ class DictationService : Service() {
 
     override fun onDestroy() {
         recorder.stop()
+        // If the service is killed while recording, drop the live session cleanly so
+        // the resident model is not held hostage by an abandoned session.
+        partialsJob?.cancel()
+        streamingSession?.close()
+        streamingSession = null
         NotificationHelper.cancelRecording(this)
         serviceScope.cancel()
         super.onDestroy()
@@ -156,5 +248,6 @@ class DictationService : Service() {
         const val ACTION_START_RECORDING = "dev.femustafa.voicedictation.action.START_RECORDING"
         const val ACTION_STOP_RECORDING = "dev.femustafa.voicedictation.action.STOP_RECORDING"
         private const val FOREGROUND_ID = 1
+        private const val TAG = "DictationService"
     }
 }

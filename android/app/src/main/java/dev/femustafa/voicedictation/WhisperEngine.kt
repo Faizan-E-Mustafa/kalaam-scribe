@@ -32,9 +32,12 @@ interface TranscriptionSession {
 
     /**
      * End of input: decodes the trailing in-progress utterance (VAD flush tail) and returns
-     * the full joined transcript. Safe to call once; after returning the session is done.
+     * the full joined transcript. [partialsSnapshot] is the transcript already accumulated
+     * from [partials] emissions during recording — flush appends only the tail segments
+     * that the decode worker has not yet emitted. Safe to call once; after returning the
+     * session is done.
      */
-    suspend fun flush(): String
+    suspend fun flush(partialsSnapshot: String): String
 
     /** Abandon the session and free resources without a final decode. */
     fun close()

@@ -29,7 +29,7 @@ class SherpaWhisperEngine(
     private val context: Context,
 ) : WhisperEngine {
 
-    private class SherpaModelRef(
+    class SherpaModelRef(
         val recognizer: OfflineRecognizer,
         val encoderPath: String,
         val decoderPath: String,
@@ -141,12 +141,43 @@ class SherpaWhisperEngine(
         }
     }
 
+    override suspend fun createSession(
+        model: WhisperModelRef,
+        languageMode: LanguageMode,
+        language: String?,
+    ): TranscriptionSession? {
+        val real = model as? SherpaModelRef ?: return null
+        val resolvedLanguage = resolveLanguage(languageMode, language)
+        val waveWriter = InMemoryWaveWriter(16000)
+        // Create a SherpaVad instance for this session
+        val sileroPath = java.io.File(context.filesDir, "silero_vad.onnx").absolutePath
+        if (!java.io.File(sileroPath).exists()) {
+            Log.w(TAG, "Silero VAD model not found at $sileroPath, cannot create streaming session")
+            return null
+        }
+        val silero = com.k2fsa.sherpa.onnx.SileroVadModelConfig()
+        silero.model = sileroPath
+        silero.threshold = 0.5f
+        silero.minSilenceDuration = 0.25f
+        silero.minSpeechDuration = 0.5f
+        silero.windowSize = 512
+        silero.maxSpeechDuration = 5.0f
+        val vadConfig = com.k2fsa.sherpa.onnx.VadModelConfig()
+        vadConfig.sileroVadModelConfig = silero
+        vadConfig.sampleRate = 16000
+        vadConfig.numThreads = VoiceDictationApp.from(context).whisperThreads()
+        vadConfig.provider = "cpu"
+        val vad = com.k2fsa.sherpa.onnx.Vad(null, vadConfig)
+        val vadLike = SherpaVad(vad)
+        return SherpaOfflineSession(real.recognizer, waveWriter, resolvedLanguage, real, context, vadLike)
+    }
+
     /**
      * Update the whisper sub-config of the resident recognizer so subsequent
      * decodes use [lang] ("" = auto-detect). The C++ whisper impl's SetConfig only
      * reads the whisper sub-config, so we rebuild just that portion.
      */
-    private fun applyLanguage(real: SherpaModelRef, lang: String) {
+    internal fun applyLanguage(real: SherpaModelRef, lang: String) {
         val whisperConfig = OfflineWhisperModelConfig()
         whisperConfig.encoder = real.encoderPath
         whisperConfig.decoder = real.decoderPath

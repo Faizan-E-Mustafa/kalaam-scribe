@@ -25,7 +25,7 @@ class WhisperManagerTest {
     private class FakeSession : TranscriptionSession {
         override fun accept(samples: ShortArray) = Unit
         override val partials = kotlinx.coroutines.flow.MutableSharedFlow<String>()
-        override suspend fun flush(): String = "SESSION_TEXT"
+        override suspend fun flush(partialsSnapshot: String): String = "SESSION_TEXT"
         override fun close() = Unit
     }
 
@@ -245,7 +245,7 @@ class WhisperManagerTest {
 
         val session = manager.createSession()
 
-        assertEquals("SESSION_TEXT", session?.flush())
+        assertEquals("SESSION_TEXT", session?.flush(""))
         assertEquals(1, engine.createSessionCalls.size)
         // Model still resident, not reloaded.
         assertEquals(1, engine.loadCount)

@@ -1,6 +1,5 @@
 package dev.femustafa.voicedictation
 
-import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -34,6 +33,7 @@ internal class EngineTranscriptionSession(
     private val vad: VadLike,
     private val decodeSegment: suspend (FloatArray) -> String,
     private val decodeWhole: suspend (FloatArray) -> String,
+    private val logger: (String, String) -> Unit = { tag, msg -> android.util.Log.w(tag, msg) },
 ) : TranscriptionSession {
 
     private val drainer = LiveVadDrainer(vad)
@@ -70,7 +70,7 @@ internal class EngineTranscriptionSession(
                     _partials.tryEmit(text)
                 }
             } catch (t: Throwable) {
-                Log.w(TAG, "per-segment decode failed, continuing: ${t.message}")
+                logger(TAG, "per-segment decode failed, continuing: ${t.message}")
             }
         }
     }
@@ -89,19 +89,26 @@ internal class EngineTranscriptionSession(
         }
     }
 
-    override suspend fun flush(): String {
+    override suspend fun flush(partialsSnapshot: String): String {
         // The recorder has already stopped, so no accept() can run concurrently here.
+        // Drain any trailing VAD tail into the channel for the worker to process.
         for (utterance in drainer.flushAndDrain()) {
             segmentChannel.trySend(utterance.samples)
         }
         segmentChannel.close()
         worker.join()
+        // decodedTexts holds everything the worker emitted. partialsSnapshot is the text
+        // the UI already showed. Combine them — the worker may have emitted segments
+        // after we captured partialsSnapshot, but not before.
         val joined = decodedTexts.joinToString(" ")
-        val full = if (joined.isBlank()) {
-            Log.w(TAG, "no VAD segment produced text; whole-clip fallback decode")
-            decodeWhole(wholeAudio())
-        } else {
-            joined
+        val full = when {
+            partialsSnapshot.isNotBlank() && joined.isNotBlank() -> "$partialsSnapshot $joined"
+            partialsSnapshot.isNotBlank() -> partialsSnapshot
+            joined.isNotBlank() -> joined
+            else -> {
+                logger(TAG, "no VAD segment produced text; whole-clip fallback decode")
+                decodeWhole(wholeAudio())
+            }
         }
         jobScope.cancel()
         return full

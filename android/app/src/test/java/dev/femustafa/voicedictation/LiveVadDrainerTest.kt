@@ -19,11 +19,11 @@ class LiveVadDrainerTest {
      * reports isSpeechDetected() based on the plan for the given chunk index.
      */
     private class FakeVad(
-        private val segmentPlan: Map<Int, List<SpeechUtterance>> = emptyMap(),
-        private val flushSegments: List<SpeechUtterance> = emptyList(),
+        private val segmentPlan: Map<Int, List<SpeechSegment>> = emptyMap(),
+        private val flushSegments: List<SpeechSegment> = emptyList(),
     ) : VadLike {
         val acceptedSizes = mutableListOf<Int>()
-        private val queued = ArrayDeque<SpeechUtterance>()
+        private val queued = ArrayDeque<SpeechSegment>()
         private var speechOnLastChunk = false
         private var chunkIndex = 0
 
@@ -38,7 +38,7 @@ class LiveVadDrainerTest {
 
         override fun isEmpty(): Boolean = queued.isEmpty()
 
-        override fun front(): SpeechUtterance? = queued.firstOrNull()
+        override fun front(): SpeechSegment? = queued.firstOrNull()
 
         override fun pop() {
             if (!queued.isEmpty()) queued.removeFirst()
@@ -69,7 +69,7 @@ class LiveVadDrainerTest {
 
     @Test
     fun segmentDrainedImmediatelyWhenSpeechDetected() {
-        val seg = SpeechUtterance(start = 0, samples = tones(10))
+        val seg = SpeechSegment(start = 0, samples = tones(10))
         val vad = FakeVad(segmentPlan = mapOf(1 to listOf(seg)))
         val drainer = LiveVadDrainer(vad)
 
@@ -85,8 +85,8 @@ class LiveVadDrainerTest {
 
     @Test
     fun multipleSegmentsFromSingleChunkAreDrainedInOrder() {
-        val seg1 = SpeechUtterance(start = 512, samples = tones(10))
-        val seg2 = SpeechUtterance(start = 600, samples = tones(20))
+        val seg1 = SpeechSegment(start = 512, samples = tones(10))
+        val seg2 = SpeechSegment(start = 600, samples = tones(20))
         val vad = FakeVad(segmentPlan = mapOf(1 to listOf(seg1, seg2)))
         val drainer = LiveVadDrainer(vad)
 
@@ -102,7 +102,7 @@ class LiveVadDrainerTest {
 
     @Test
     fun flushSurfacesTailSegment() {
-        val tail = SpeechUtterance(start = 512 * 3, samples = tones(7))
+        val tail = SpeechSegment(start = 512 * 3, samples = tones(7))
         val vad = FakeVad(flushSegments = listOf(tail))
         val drainer = LiveVadDrainer(vad)
 
@@ -125,8 +125,8 @@ class LiveVadDrainerTest {
 
     @Test
     fun segmentAfterFlushTailIsReturnedFromFlush() {
-        val mid = SpeechUtterance(start = 512, samples = tones(10))
-        val tail = SpeechUtterance(start = 512 * 2, samples = tones(5))
+        val mid = SpeechSegment(start = 512, samples = tones(10))
+        val tail = SpeechSegment(start = 512 * 2, samples = tones(5))
         val vad = FakeVad(
             segmentPlan = mapOf(1 to listOf(mid)),
             flushSegments = listOf(tail),

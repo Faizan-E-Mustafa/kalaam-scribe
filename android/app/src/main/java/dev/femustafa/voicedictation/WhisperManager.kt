@@ -205,8 +205,8 @@ private class SessionEndGuard(
 
     override val partials: SharedFlow<String> = delegate.partials
 
-    override suspend fun flush(): String {
-        val text = delegate.flush()
+    override suspend fun flush(partialsSnapshot: String): String {
+        val text = delegate.flush(partialsSnapshot)
         end()
         return text
     }

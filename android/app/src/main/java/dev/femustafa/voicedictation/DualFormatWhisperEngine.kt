@@ -3,6 +3,8 @@ package dev.femustafa.voicedictation
 import android.content.Context
 import android.util.Log
 import dev.femustafa.voicedictation.WhisperEngine.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 /**
  * [WhisperEngine] that dispatches to one of several backends:
@@ -89,6 +91,8 @@ class DualFormatWhisperEngine(
         }
     }
 
+    private val sessionMutex = Mutex()
+
     override suspend fun createSession(
         model: WhisperModelRef,
         languageMode: LanguageMode,
@@ -96,12 +100,19 @@ class DualFormatWhisperEngine(
     ): TranscriptionSession? {
         val real = model as? DualModelRef
             ?: throw IllegalArgumentException("unexpected model handle")
-        return when (real.backend) {
-            // The whisper.cpp GGML backend has no incremental API — batch only.
-            Backend.GGML -> null
-            Backend.ONNX -> onnxEngine.createSession(real.delegate, languageMode, language)
-            Backend.DOLPHIN_CTC -> dolphinCtcEngine.createSession(real.delegate, languageMode, language)
-            Backend.DOLPHIN_ATTN -> dolphinAttnEngine.createSession(real.delegate, languageMode, language)
+
+        // Serialise session creation so the resident model isn't borrowed twice
+        // (WhisperManager.sessionMutex already gates this across the app, but
+        // we also hold the engine's own mutex to prevent races between concurrent
+        // release()/createSession() calls).
+        return sessionMutex.withLock {
+            when (real.backend) {
+                // The whisper.cpp GGML backend has no incremental API — batch only.
+                Backend.GGML -> null
+                Backend.ONNX -> onnxEngine.createSession(real.delegate, languageMode, language)
+                Backend.DOLPHIN_CTC -> dolphinCtcEngine.createSession(real.delegate, languageMode, language)
+                Backend.DOLPHIN_ATTN -> dolphinAttnEngine.createSession(real.delegate, languageMode, language)
+            }
         }
     }
 

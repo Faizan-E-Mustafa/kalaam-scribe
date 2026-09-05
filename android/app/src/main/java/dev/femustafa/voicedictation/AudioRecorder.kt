@@ -21,6 +21,14 @@ class AudioRecorder {
     private var output: File? = null
     private var recording = false
 
+    /**
+     * Optional listener invoked from the capture thread with each [read] chunk of
+     * 16 kHz mono 16-bit PCM samples. Used by the simulated streaming session to feed
+     * the VAD while the WAV file is being written in parallel. Must be set BEFORE
+     * [start]. Cleared on [stop].
+     */
+    var frameListener: ((ShortArray) -> Unit)? = null
+
     val isRecording: Boolean
         get() = recording
 
@@ -60,6 +68,9 @@ class AudioRecorder {
                 while (recording) {
                     val read = record.read(buffer, 0, buffer.size)
                     if (read > 0) {
+                        // Hand the captured chunk to the live streaming listener (if any)
+                        // so the VAD can segment the audio in real time.
+                        frameListener?.invoke(buffer.copyOf(read))
                         // Write raw little-endian PCM samples.
                         val bytes = ByteArray(read * 2)
                         for (i in 0 until read) {
@@ -84,6 +95,7 @@ class AudioRecorder {
     fun stop() {
         if (!recording) return
         recording = false
+        frameListener = null
         capture?.join(2000)
         capture = null
     }

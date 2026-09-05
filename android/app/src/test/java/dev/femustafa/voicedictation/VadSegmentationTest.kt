@@ -19,15 +19,15 @@ class VadSegmentationTest {
     /** A [VadLike] whose behavior matches the sherpa contract used by the helper. */
     private class FakeVad(
         /** Segments to enqueue at a given accepted-chunk index (isSpeechDetected → true). */
-        private val segmentPlan: Map<Int, List<SpeechUtterance>> = emptyMap(),
+        private val segmentPlan: Map<Int, List<SpeechSegment>> = emptyMap(),
         /** Segments enqueued by [flush] (tail audio surfaced). */
-        private val flushSegments: List<SpeechUtterance> = emptyList(),
+        private val flushSegments: List<SpeechSegment> = emptyList(),
     ) : VadLike {
         /** Sample counts of every window the helper accepted. */
         val acceptedSizes = mutableListOf<Int>()
         var flushCalled = false
 
-        private val queued = ArrayDeque<SpeechUtterance>()
+        private val queued = ArrayDeque<SpeechSegment>()
         private var speechOnLastChunk = false
         private var chunkIndex = 0
 
@@ -42,7 +42,7 @@ class VadSegmentationTest {
 
         override fun isEmpty(): Boolean = queued.isEmpty()
 
-        override fun front(): SpeechUtterance? = queued.firstOrNull()
+        override fun front(): SpeechSegment? = queued.firstOrNull()
 
         override fun pop() {
             if (!queued.isEmpty()) queued.removeFirst()
@@ -74,10 +74,10 @@ class VadSegmentationTest {
     fun collectsSegmentsInOrderWhenSpeechDetected() {
         val plan = mapOf(
             1 to listOf(
-                SpeechUtterance(start = 512, samples = tones(10)),
-                SpeechUtterance(start = 600, samples = tones(20)),
+                SpeechSegment(start = 512, samples = tones(10)),
+                SpeechSegment(start = 600, samples = tones(20)),
             ),
-            3 to listOf(SpeechUtterance(start = 512 * 3, samples = tones(5))),
+            3 to listOf(SpeechSegment(start = 512 * 3, samples = tones(5))),
         )
         val vad = FakeVad(segmentPlan = plan)
         val out = segmentAudioWithVad(tones(512 * 4), vad)
@@ -99,11 +99,11 @@ class VadSegmentationTest {
 
     @Test
     fun flushSurfacesBufferedTailUntilDrained() {
-        val tail = SpeechUtterance(start = 512 * 2, samples = tones(8))
+        val tail = SpeechSegment(start = 512 * 2, samples = tones(8))
         // Speech detected on chunk 0 so a segment is drained live; then nothing until
         // flush enqueues the tail segment, which must also be drained.
         val vad = FakeVad(
-            segmentPlan = mapOf(0 to listOf(SpeechUtterance(0, tones(3)))),
+            segmentPlan = mapOf(0 to listOf(SpeechSegment(0, tones(3)))),
             flushSegments = listOf(tail),
         )
         val out = segmentAudioWithVad(tones(512 * 2), vad)

@@ -77,7 +77,7 @@ class DolphinAttnEngine(
     }
 
     /** Everything needed to decode with a loaded model pair. */
-    private class DolphinAttnModelRef(
+    class DolphinAttnModelRef(
         val env: OrtEnvironment,
         val encoder: OrtSession,
         val decoder: OrtSession,
@@ -237,6 +237,24 @@ class DolphinAttnEngine(
         }
     }
 
+    override suspend fun createSession(
+        model: WhisperModelRef,
+        languageMode: LanguageMode,
+        language: String?,
+    ): TranscriptionSession? {
+        val ref = model as? DolphinAttnModelRef ?: return null
+        if (language != null && language != "ur") {
+            Log.w(TAG, "language '$language' requested; only ur/PK pin verified, using it")
+        }
+        val waveWriter = InMemoryWaveWriter(16000)
+        // Use the resident VAD from the model ref, or create a new one if not available
+        val vadLike: VadLike = ref.vad?.let { SherpaVad(it) } ?: run {
+            Log.w(TAG, "No resident VAD available; cannot create streaming session")
+            return null
+        }
+        return DolphinAttnSession(this, ref, waveWriter, context, vadLike)
+    }
+
     override fun release(model: WhisperModelRef) {
         val ref = model as? DolphinAttnModelRef ?: return
         try {
@@ -306,7 +324,7 @@ class DolphinAttnEngine(
      *  4. Pick the finished hypothesis with the best LENGTH-NORMALIZED score
      *     (score / #generated tokens), dropping prefix-only empties.
      */
-    private fun beamSearch(ref: DolphinAttnModelRef, audio: ShortArray): IntArray {
+    internal fun beamSearch(ref: DolphinAttnModelRef, audio: ShortArray): IntArray {
         val env = ref.env
         val audioTensor = OnnxTensor.createTensor(
             env, toDirectShortBuffer(audio), longArrayOf(1, 1, audio.size.toLong()),
@@ -489,7 +507,7 @@ class DolphinAttnEngine(
         } as OnnxTensor
 
     /** Convert content token ids (after the 5-token prefix) to text via units.txt. */
-    private fun decodeTokens(ref: DolphinAttnModelRef, tokens: IntArray): String {
+    internal fun decodeTokens(ref: DolphinAttnModelRef, tokens: IntArray): String {
         val content = tokens.drop(PREFIX_SIZE)
             .filter { it != 0 && it != SOS && it != EOS && it != NOTS }
             .filter { it < ref.tokenList.size }
