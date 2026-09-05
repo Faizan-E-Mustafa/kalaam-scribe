@@ -80,6 +80,11 @@ object ModelCatalog {
     /** Project-hosted Dolphin attention ASR ONNX pairs (encoder/decoder + units). */
     const val DOLPHIN_ATTN_HF = "$RU_HF/dolphin-attn"
 
+    /** sherpa-onnx-hosted Silero VAD model (shared by all Dolphin attention models;
+     *  bundled into the dolphin-attn download as `silero_vad.onnx`). */
+    const val SHERPA_SILERO_VAD =
+        "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/silero_vad.onnx"
+
     /** GGML (whisper.cpp) catalog: quantized `.bin` models. */
     val ggmlModels: List<CatalogEntry> = listOf(
         CatalogEntry(

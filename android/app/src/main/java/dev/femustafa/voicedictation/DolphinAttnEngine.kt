@@ -8,6 +8,9 @@ import ai.onnxruntime.TensorInfo
 import android.content.Context
 import android.os.SystemClock
 import android.util.Log
+import com.k2fsa.sherpa.onnx.SileroVadModelConfig
+import com.k2fsa.sherpa.onnx.Vad
+import com.k2fsa.sherpa.onnx.VadModelConfig
 import dev.femustafa.voicedictation.WhisperEngine.*
 import java.io.File
 import java.io.FileNotFoundException
@@ -43,6 +46,11 @@ import kotlin.math.min
  *
  * Vocabulary: `units.txt` id→symbol list; decode is SentencePiece `DecodePieces`
  * (leading `▁` → space, concatenate, trim leading space) without needing `bpe.model`.
+ *
+ * Longer clips are split into per-utterance segments with a resident Silero VAD
+ * (sherpa-onnx's `Vad`, model file `silero_vad.onnx` beside the encoder) and each
+ * utterance decoded independently before joining — see [transcribeClip]. If the VAD
+ * is unavailable or finds no speech, a single whole-clip decode is used instead.
  */
 class DolphinAttnEngine(
     private val context: Context,
@@ -81,6 +89,12 @@ class DolphinAttnEngine(
         val langStartTensor: OnnxTensor,
         val langEndTensor: OnnxTensor,
         val maskTensor: OnnxTensor,
+        /**
+         * Resident Silero VAD (sherpa-onnx), loaded once for [transcribe] to split long
+         * clips into per-utterance decodes. Null when the silero_vad.onnx sibling is
+         * absent/undersized → whole-clip decode fallback.
+         */
+        val vad: Vad?,
     ) : WhisperModelRef
 
     /** A single decoder run: fresh KV state + the raw full-logits row. */
@@ -149,6 +163,39 @@ class DolphinAttnEngine(
         }
         val tokenList = unitsFile.readLines().map { it.trim().substringBefore(' ') }
 
+        // Resident Silero VAD: load once so long clips can be split into per-utterance
+        // decodes. The model is the shared silero_vad.onnx sibling in the same dir as
+        // the encoder; if it's missing/undersized (or fails to initialize) we degrade
+        // to whole-clip decode rather than failing the load.
+        val vadModelFile = File(dir, ModelDownloader.vadFileName())
+        val vad: Vad? = if (vadModelFile.exists() &&
+            vadModelFile.length() >= ModelDownloader.MIN_VAD_BYTES
+        ) {
+            try {
+                val silero = SileroVadModelConfig()
+                silero.model = vadModelFile.absolutePath
+                silero.threshold = 0.5f
+                silero.minSilenceDuration = 0.25f
+                silero.minSpeechDuration = 0.5f
+                silero.windowSize = VAD_WINDOW
+                silero.maxSpeechDuration = 5.0f
+
+                val vadConfig = VadModelConfig()
+                vadConfig.sileroVadModelConfig = silero
+                vadConfig.sampleRate = SAMPLE_RATE
+                vadConfig.numThreads = threads
+                vadConfig.provider = "cpu"
+
+                Vad(null, vadConfig)
+            } catch (e: Exception) {
+                Log.w(TAG, "failed to init Silero VAD; whole-clip decode only: ${e.message}")
+                null
+            }
+        } else {
+            Log.w(TAG, "Silero VAD model missing/undersized at $vadModelFile; whole-clip decode only")
+            null
+        }
+
         return DolphinAttnModelRef(
             env, encoder, decoder, tokenList, nl, headDim, dModel,
             langStartTensor = OnnxTensor.createTensor(
@@ -161,6 +208,7 @@ class DolphinAttnEngine(
                 env, ByteBuffer.allocateDirect(1).order(ByteOrder.nativeOrder()).also { it.put(0, 0) },
                 longArrayOf(1), OnnxJavaType.INT8
             ),
+            vad = vad,
         )
     }
 
@@ -181,9 +229,8 @@ class DolphinAttnEngine(
         return try {
             val audio = readWaveShorts(audioPath)
                 ?: throw IOException("Failed to read wave file: $audioPath")
-            Log.i(TAG, "transcribing ${audio.size} samples (${audio.size / 1600 / 10.0} s)")
-            val tokens = beamSearch(ref, audio)
-            decodeTokens(ref, tokens)
+            Log.i(TAG, "transcribing ${audio.size} samples (${audio.size / SAMPLE_RATE.toDouble()} s)")
+            transcribeClip(ref, audio)
         } catch (e: Exception) {
             Log.e(TAG, "dolphin attention transcribe failed", e)
             throw e
@@ -193,6 +240,7 @@ class DolphinAttnEngine(
     override fun release(model: WhisperModelRef) {
         val ref = model as? DolphinAttnModelRef ?: return
         try {
+            ref.vad?.release()
             ref.langStartTensor.close()
             ref.langEndTensor.close()
             ref.maskTensor.close()
@@ -201,6 +249,48 @@ class DolphinAttnEngine(
             Log.i(TAG, "released Dolphin attention model")
         } catch (e: Exception) {
             Log.w(TAG, "error releasing Dolphin attention model: ${e.message}")
+        }
+    }
+
+    /**
+     * Transcribe [audio] with the resident [ref]. When a Silero VAD is loaded it splits
+     * the clip into per-utterance segments, each decoded independently and joined — the
+     * pattern sherpa-onnx itself uses for Dolphin (VAD → offline decode per utterance),
+     * which avoids one monolithic decode of a long clip. Falls back to a single whole-clip
+     * decode when VAD is unavailable, finds no speech, or every decoded segment is blank
+     * (e.g. segmentation ran on noise) — preserving the pre-VAD behavior and the
+     * "No speech detected" surface.
+     */
+    private fun transcribeClip(ref: DolphinAttnModelRef, audio: ShortArray): String {
+        val vad = ref.vad
+        if (vad == null) {
+            Log.i(TAG, "no Silero VAD loaded; whole-clip decode")
+            return decodeTokens(ref, beamSearch(ref, audio))
+        }
+        val segments = segmentWithVad(vad, audio)
+        if (segments.isEmpty()) {
+            Log.i(TAG, "Silero VAD found no speech in ${audio.size} samples; whole-clip decode")
+            return decodeTokens(ref, beamSearch(ref, audio))
+        }
+        Log.i(TAG, "Silero VAD split ${audio.size} samples into ${segments.size} utterance(s)")
+        val texts = segments.map { decodeTokens(ref, beamSearch(ref, it)) }.filter { it.isNotBlank() }
+        if (texts.isEmpty()) {
+            Log.w(TAG, "all VAD segments decoded blank; whole-clip decode")
+            return decodeTokens(ref, beamSearch(ref, audio))
+        }
+        return texts.joinToString(" ")
+    }
+
+    /**
+     * Feed [audio] to the sherpa Silero [vad] and return each utterance it emits as an
+     * int16 ShortArray ready for [beamSearch]. Shorts are converted to the normalized
+     * float [-1,1] input Silero expects and back to int16 for the fused STFT encoder.
+     */
+    private fun segmentWithVad(vad: Vad, audio: ShortArray): List<ShortArray> {
+        val floats = FloatArray(audio.size) { audio[it] / 32768f }
+        val utterances = segmentAudioWithVad(floats, SherpaVad(vad))
+        return utterances.map { u ->
+            ShortArray(u.samples.size) { (u.samples[it] * 32767f).toInt().toShort() }
         }
     }
 

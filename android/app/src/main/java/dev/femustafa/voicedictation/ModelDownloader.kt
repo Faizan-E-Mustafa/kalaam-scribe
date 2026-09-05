@@ -48,12 +48,18 @@ class ModelDownloader(
         const val MIN_ATTN_ENC_DEC_BYTES = 1_000_000L
         // units.txt (the id→symbol vocab) is ~500 KB.
         const val MIN_ATTN_UNITS_BYTES = 100_000L
+        // silero_vad.onnx is ~630 KB; this floor rejects truncated downloads the
+        // sherpa VAD would otherwise fail to load (falls back to whole-clip decode).
+        const val MIN_VAD_BYTES = 400_000L
 
         /** The decoder filename for a Dolphin attention model, e.g. `<id>-decoder.onnx`. */
         fun dolphinAttnDecoderName(entry: CatalogEntry): String = "${entry.model.id}-decoder.onnx"
 
         /** The shared units.txt vocab filename for all Dolphin attention models. */
         fun dolphinAttnUnitsName(): String = "dolphin-attn-units.txt"
+
+        /** The shared Silero VAD model filename (one file, used by every Dolphin attention model). */
+        fun vadFileName(): String = "silero_vad.onnx"
     }
 
     /**
@@ -94,19 +100,23 @@ class ModelDownloader(
     }
 
     /**
-     * True when all three Dolphin attention files (encoder.onnx, decoder.onnx and the
-     * shared units.txt) exist with plausible sizes, plus the encoder and decoder
-     * actually differ (downloading a decoder into the encoder slot would pass the
-     * size floor but crash the ORT session). Guards against stale/truncated files
-     * that would otherwise load as "Ready" and crash the engine at transcription time.
+     * True when all four Dolphin attention files (encoder.onnx, decoder.onnx, the
+     * shared units.txt and the shared silero_vad.onnx) exist with plausible sizes, plus
+     * the encoder and decoder actually differ (downloading a decoder into the encoder
+     * slot would pass the size floor but crash the ORT session). Guards against
+     * stale/truncated files that would otherwise load as "Ready" and crash the engine
+     * at transcription time. VAD absence only downgrades to whole-clip decode, but
+     * keeping it in the completeness gate drives the download so the feature works.
      */
     fun dolphinAttnComplete(entry: CatalogEntry): Boolean {
         val encoder = java.io.File(baseDir, dolphinAttnEncoderName(entry))
         val decoder = java.io.File(baseDir, dolphinAttnDecoderName(entry))
         val units = java.io.File(baseDir, dolphinAttnUnitsName())
+        val vad = java.io.File(baseDir, vadFileName())
         return encoder.exists() && encoder.length() >= MIN_ATTN_ENC_DEC_BYTES &&
             decoder.exists() && decoder.length() >= MIN_ATTN_ENC_DEC_BYTES &&
             units.exists() && units.length() >= MIN_ATTN_UNITS_BYTES &&
+            vad.exists() && vad.length() >= MIN_VAD_BYTES &&
             encoder.length() != decoder.length()
     }
 
@@ -384,14 +394,15 @@ class ModelDownloader(
         }
     }
 
-    /** Ensure the decoder.onnx + units.txt siblings exist, downloading concurrently. */
+    /** Ensure the decoder.onnx + units.txt (+ shared silero_vad.onnx) siblings exist. */
     private suspend fun ensureDolphinAttnSiblings(entry: CatalogEntry, encoderUrl: String) {
-        val (decoderGot, unitsGot) = coroutineScope {
+        val (decoderGot, unitsGot, vadGot) = coroutineScope {
             val decoderDeferred = async { ensureDolphinAttnSibling(dolphinAttnDecoderUrl(encoderUrl), dolphinAttnDecoderName(entry), MIN_ATTN_ENC_DEC_BYTES) }
             val unitsDeferred = async { ensureDolphinAttnSibling(dolphinAttnUnitsUrl(encoderUrl), dolphinAttnUnitsName(), MIN_ATTN_UNITS_BYTES) }
-            decoderDeferred.await() to unitsDeferred.await()
+            val vadDeferred = async { ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES) }
+            Triple(decoderDeferred.await(), unitsDeferred.await(), vadDeferred.await())
         }
-        if (!(decoderGot && unitsGot)) {
+        if (!(decoderGot && unitsGot && vadGot)) {
             Log.w(TAG, "Dolphin attention sibling download incomplete for ${entry.model.id}")
         }
     }
