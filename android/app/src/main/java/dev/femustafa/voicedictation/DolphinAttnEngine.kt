@@ -52,9 +52,23 @@ import kotlin.math.min
  * utterance decoded independently before joining — see [transcribeClip]. If the VAD
  * is unavailable or finds no speech, a single whole-clip decode is used instead.
  */
-class DolphinAttnEngine(
+
+/**
+ * Minimal surface of [DolphinAttnEngine]'s decode used by [DolphinAttnSession].
+ * Extracting this seam lets unit tests drive the session with a fake decode (the ONNX
+ * runtime isn't loadable on the JVM) without a real [android.content.Context] or engine.
+ */
+internal interface DolphinRecognizerLike {
+    /** Beam-search decode [audio] into content token ids (prefix already prepended). */
+    fun beamSearch(ref: DolphinAttnEngine.DolphinAttnModelRef, audio: ShortArray): IntArray
+
+    /** Convert [tokens] (content ids after the prefix) to text via the units vocab. */
+    fun decodeTokens(ref: DolphinAttnEngine.DolphinAttnModelRef, tokens: IntArray): String
+}
+
+open class DolphinAttnEngine(
     private val context: Context,
-) : WhisperEngine {
+) : WhisperEngine, DolphinRecognizerLike {
 
     /**
      * A beach contains a partial hypothesis: the token ids decoded so far (including
@@ -77,18 +91,18 @@ class DolphinAttnEngine(
     }
 
     /** Everything needed to decode with a loaded model pair. */
-    class DolphinAttnModelRef(
-        val env: OrtEnvironment,
-        val encoder: OrtSession,
-        val decoder: OrtSession,
+    open class DolphinAttnModelRef(
+        val env: OrtEnvironment?,
+        val encoder: OrtSession?,
+        val decoder: OrtSession?,
         val tokenList: List<String>,
         val nl: Int,
         val headDim: Int,
         val dModel: Int,
         /** Load-cached constant decoder inputs, reused across every step's run. */
-        val langStartTensor: OnnxTensor,
-        val langEndTensor: OnnxTensor,
-        val maskTensor: OnnxTensor,
+        val langStartTensor: OnnxTensor?,
+        val langEndTensor: OnnxTensor?,
+        val maskTensor: OnnxTensor?,
         /**
          * Resident Silero VAD (sherpa-onnx), loaded once for [transcribe] to split long
          * clips into per-utterance decodes. Null when the silero_vad.onnx sibling is
@@ -248,11 +262,17 @@ class DolphinAttnEngine(
             Log.w(TAG, "language '$language' requested; only ur/PK pin verified, using it")
         }
         val waveWriter = InMemoryWaveWriter(16000)
-        // Use the resident VAD from the model ref, or create a new one if not available
-        val vadLike: VadLike = ref.vad?.let { SherpaVad(it) } ?: run {
+        // The resident VAD is shared across batch transcribes and every streaming session,
+        // and silero is stateful (speech-start flag + buffered tail). Without a reset,
+        // state left over from a previous dictation can swallow or merge the FIRST
+        // utterance of this recording. Reset = clean slate per usage.
+        val residentVad = ref.vad
+        if (residentVad == null) {
             Log.w(TAG, "No resident VAD available; cannot create streaming session")
             return null
         }
+        residentVad.reset()
+        val vadLike = SherpaVad(residentVad)
         return DolphinAttnSession(this, ref, waveWriter, context, vadLike)
     }
 
@@ -260,11 +280,11 @@ class DolphinAttnEngine(
         val ref = model as? DolphinAttnModelRef ?: return
         try {
             ref.vad?.release()
-            ref.langStartTensor.close()
-            ref.langEndTensor.close()
-            ref.maskTensor.close()
-            ref.decoder.close()
-            ref.encoder.close()
+            ref.langStartTensor?.close()
+            ref.langEndTensor?.close()
+            ref.maskTensor?.close()
+            ref.decoder?.close()
+            ref.encoder?.close()
             Log.i(TAG, "released Dolphin attention model")
         } catch (e: Exception) {
             Log.w(TAG, "error releasing Dolphin attention model: ${e.message}")
@@ -306,6 +326,9 @@ class DolphinAttnEngine(
      * float [-1,1] input Silero expects and back to int16 for the fused STFT encoder.
      */
     private fun segmentWithVad(vad: Vad, audio: ShortArray): List<ShortArray> {
+        // Clean slate for this clip: the shared resident VAD may carry speech-start /
+        // tail state from a previous streaming session or transcribe.
+        vad.reset()
         val floats = FloatArray(audio.size) { audio[it] / 32768f }
         val utterances = segmentAudioWithVad(floats, SherpaVad(vad))
         return utterances.map { u ->
@@ -325,15 +348,15 @@ class DolphinAttnEngine(
      *  4. Pick the finished hypothesis with the best LENGTH-NORMALIZED score
      *     (score / #generated tokens), dropping prefix-only empties.
      */
-    internal fun beamSearch(ref: DolphinAttnModelRef, audio: ShortArray): IntArray {
-        val env = ref.env
+    override fun beamSearch(ref: DolphinAttnModelRef, audio: ShortArray): IntArray {
+        val env = ref.env!!
         val audioTensor = OnnxTensor.createTensor(
             env, toDirectShortBuffer(audio), longArrayOf(1, 1, audio.size.toLong()),
             OnnxJavaType.INT16
         )
 
         // Reusable encoder cross-KV, kept open for the whole decode.
-        val encResult = ref.encoder.run(mapOf("audio" to audioTensor))
+        val encResult = ref.encoder!!.run(mapOf("audio" to audioTensor))
         val enKeys = (0 until ref.nl).map { encResult.tensor("en_key_$it") }
         val enValues = (0 until ref.nl).map { encResult.tensor("en_value_$it") }
         try {
@@ -429,7 +452,7 @@ class DolphinAttnEngine(
         deKeys: List<ShortBuffer>,
         deValues: List<ShortBuffer>,
     ): DecodeResult {
-        val env = ref.env
+        val env = ref.env!!
         val n = ref.nl
         val inputs = HashMap<String, OnnxTensor>()
         // Per-call tensors we own; not the reused encoder cross KV. Closed in finally.
@@ -461,11 +484,11 @@ class DolphinAttnEngine(
             ).also { inputs["ids_len"] = it })
             // Constants are created once at load() and reused across every step, cutting
             // per-run JNI tensor churn (the dominant fixed cost on the phone).
-            inputs["language_start"] = ref.langStartTensor
-            inputs["language_end"] = ref.langEndTensor
-            inputs["attention_mask"] = ref.maskTensor
+            inputs["language_start"] = ref.langStartTensor!!
+            inputs["language_end"] = ref.langEndTensor!!
+            inputs["attention_mask"] = ref.maskTensor!!
 
-            val result = ref.decoder.run(inputs)
+            val result = ref.decoder!!.run(inputs)
             try {
                 val keys = (0 until n).map { result.tensor("out_de_key_$it").getShortBuffer() }
                 val values = (0 until n).map { result.tensor("out_de_value_$it").getShortBuffer() }
@@ -509,7 +532,7 @@ class DolphinAttnEngine(
         } as OnnxTensor
 
     /** Convert content token ids (after the 5-token prefix) to text via units.txt. */
-    internal fun decodeTokens(ref: DolphinAttnModelRef, tokens: IntArray): String {
+    override fun decodeTokens(ref: DolphinAttnModelRef, tokens: IntArray): String {
         val content = tokens.drop(PREFIX_SIZE)
             .filter { it != 0 && it != SOS && it != EOS && it != NOTS }
             .filter { it < ref.tokenList.size }

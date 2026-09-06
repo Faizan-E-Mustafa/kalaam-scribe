@@ -60,6 +60,13 @@ android {
             )
         }
     }
+
+    testOptions {
+        // android.util.Log and similar Android-only APIs return defaults (0/null) on the
+        // JVM rather than throwing. Lets unit tests exercise code paths that log without
+        // requiring a Robolectric or androidTest harness.
+        unitTests.isReturnDefaultValues = true
+    }
 }
 
 dependencies {

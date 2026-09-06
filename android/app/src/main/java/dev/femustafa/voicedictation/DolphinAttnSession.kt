@@ -5,6 +5,7 @@ import android.util.Log
 import kotlinx.coroutines.CoroutineName
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -18,24 +19,68 @@ import kotlinx.coroutines.sync.withLock
  * This session uses a resident VAD and a decode worker to process audio segments.
  * It uses the existing beamSearch and decodeTokens from DolphinAttnEngine.
  *
+ * @param engine The *resident* engine whose beamSearch/decodeTokens decode segments.
  * @param modelRef The *resident* model ref containing encoder/decoder sessions and VAD.
  * @param waveWriter A [WaveWriter] for accumulating audio for potential whole-clip fallback.
  * @param context Android Context for accessing app-specific resources and threading.
  * @param vadLike The VAD instance to use for segmentation.
+ *
+ * Testing: the secondary ctor accepts a [DolphinRecognizerLike] so tests can drive
+ * the session with a fake decode without the ONNX runtime.
  */
-internal class DolphinAttnSession(
-    private val engine: DolphinAttnEngine,
-    private val modelRef: DolphinAttnEngine.DolphinAttnModelRef,
+internal open class DolphinAttnSession(
+    private val engine: DolphinAttnEngine?,
+    private val recognizerLike: DolphinRecognizerLike?,
+    private val modelRef: DolphinAttnEngine.DolphinAttnModelRef?,
     private val waveWriter: WaveWriter,
-    private val context: Context,
+    private val context: Context?,
     private val vadLike: VadLike,
 ) : TranscriptionSession {
+
+    /** Production ctor: keeps the existing call site unchanged. The engine is a
+     *  [DolphinRecognizerLike], so it doubles as the decode hook. */
+    constructor(
+        engine: DolphinAttnEngine,
+        modelRef: DolphinAttnEngine.DolphinAttnModelRef,
+        waveWriter: WaveWriter,
+        context: Context?,
+        vadLike: VadLike,
+    ) : this(
+        engine = engine,
+        recognizerLike = null,
+        modelRef = modelRef,
+        waveWriter = waveWriter,
+        context = context,
+        vadLike = vadLike,
+    )
+
+    /** Test ctor: skip the engine and drive decoding through a fake [DolphinRecognizerLike]. */
+    constructor(
+        recognizerLike: DolphinRecognizerLike,
+        modelRef: DolphinAttnEngine.DolphinAttnModelRef,
+        waveWriter: WaveWriter,
+        vadLike: VadLike,
+    ) : this(
+        engine = null,
+        recognizerLike = recognizerLike,
+        modelRef = modelRef,
+        waveWriter = waveWriter,
+        context = null,
+        vadLike = vadLike,
+    )
+
+    /** Resolve the decode hook: prefer the test seam if set, else the engine. */
+    private val decodeHook: DolphinRecognizerLike by lazy {
+        recognizerLike ?: requireNotNull(engine) { "no engine in this session" }
+    }
 
     // Coroutine scope for the decode worker. Cancelled on [close].
     private val scope = CoroutineScope(Dispatchers.Default + CoroutineName("DolphinAttnSession"))
 
-    // Channel for VAD segments. Runs on the capture thread.
-    private val segments = Channel<SpeechSegment>(VAD_SEGMENT_QUEUE_SIZE)
+    // Channel for VAD segments. Runs on the capture thread. UNLIMITED so no
+    // segment is ever dropped on a slow decode worker — loss would corrupt the
+    // final joined transcript. Decode outpaces capture in practice.
+    private val segments = Channel<SpeechSegment>(Channel.UNLIMITED)
 
     // Shared flow for partial transcription results.
     // Large buffer + SUSPEND strategy so bursty emits are not silently dropped —
@@ -47,35 +92,36 @@ internal class DolphinAttnSession(
     )
     override val partials: SharedFlow<String> = _partials
 
+    /** Every non-blank text the worker decoded, in capture order. The authoritative
+     *  source for [flush]'s final transcript — the async [partials] flow is best-effort. */
+    private val decodedTexts = ArrayList<String>()
+
     // Mutex for state protection during flush/close.
     private val mutex = Mutex()
 
     // Flag to ensure session is not used after closing.
+    @Volatile
     private var isClosed = false
 
     // Live VAD drainer for streaming segmentation
     private val vadDrainer = LiveVadDrainer(vadLike)
 
-    init {
-        // Launch the decode worker.
-        scope.launch {
-            Log.i(TAG, "decode worker started")
-            for (segment in segments) {
-                // Decode segment using the existing beamSearch and decodeTokens.
-                val shortArray = ShortArray(segment.samples.size) {
-                    (segment.samples[it] * 32767f).toInt().toShort()
-                }
-                val tokens = engine.beamSearch(modelRef, shortArray)
-                val text = engine.decodeTokens(modelRef, tokens).trim()
-                // Only emit if the session is still open. This prevents stale partials
-                // from being emitted after flush() has taken over.
-                if (text.isNotBlank() && !isClosed) {
-                    _partials.emit(text)
-                    Log.i(TAG, "emitted partial: " + text)
-                }
+    // The decode worker. Kept so [flush] can join it and thus never drop segments
+    // still queued when recording stops.
+    private val worker: Job = scope.launch {
+        Log.i(TAG, "decode worker started")
+        for (segment in segments) {
+            val text = decodeSegment(segment)
+            if (text.isNotBlank()) {
+                decodedTexts += text
+                // Best-effort UI delivery (the authoritative text is decodedTexts, which
+                // flush reads after joining the worker). Emitting during flush is fine —
+                // the service has already cancelled the UI collector by then.
+                _partials.tryEmit(text)
+                Log.i(TAG, "emitted partial: " + text)
             }
-            Log.i(TAG, "decode worker stopped")
         }
+        Log.i(TAG, "decode worker stopped")
     }
 
     override fun accept(samples: ShortArray) {
@@ -86,58 +132,49 @@ internal class DolphinAttnSession(
         waveWriter.accept(samples)
         val newSegments = vadDrainer.push(floatSamples)
         newSegments.forEach { segment ->
-            if (!segments.trySend(segment).isSuccess) {
-                Log.w(TAG, "VAD segment queue full, dropping segment.")
-            }
+            segments.trySend(segment)
         }
     }
 
-    override suspend fun flush(partialsSnapshot: String): String = mutex.withLock {
+    // partialsSnapshot is accepted to match the TranscriptionSession signature but is
+    // intentionally unused: decodedTexts (complete after worker.join) is authoritative.
+    override suspend fun flush(_partialsSnapshot: String): String = mutex.withLock {
         if (isClosed) return ""
         isClosed = true
-        Log.i(TAG, "flush: stopping decode worker, appending tail segments to partials snapshot")
+        Log.i(TAG, "flush: draining tail segments into the worker, then joining it")
 
-        // Close the channel FIRST so the decode worker's next receive() throws immediately.
+        // Drain the VAD tail into the channel so the worker decodes it in order.
+        vadDrainer.flushAndDrain().forEach { segments.trySend(it) }
+
+        // Close then JOIN the worker: every queued segment (live + tail) is decoded.
+        // Cancelling without a join would drop segments still buffered on a slow worker —
+        // exactly the loss this channel/worker design must prevent.
         segments.close()
+        worker.join()
         scope.cancel()
 
-        // Drain the VAD tail and decode it directly.
-        val tailSegments = vadDrainer.flushAndDrain()
-        val tailText = decodeSegments(tailSegments)
-
-        val finalTranscript = when {
-            partialsSnapshot.isNotBlank() && tailText.isNotBlank() -> "$partialsSnapshot $tailText"
-            partialsSnapshot.isNotBlank() -> partialsSnapshot
-            tailText.isNotBlank() -> tailText
-            else -> {
+        // decodedTexts is the authoritative, complete transcript: the worker was joined, so
+        // it contains every live AND tail segment in capture order. partialsSnapshot only
+        // reflects what the UI showed live (a subset of decodedTexts), so prepending it would
+        // duplicate segments — decodedTexts already includes them. We ignore it here.
+        val finalTranscript =
+            if (decodedTexts.isNotEmpty()) decodedTexts.joinToString(" ")
+            else {
                 Log.w(TAG, "No VAD segments, falling back to whole-clip decode.")
                 val fullWave = waveWriter.flush()
-                if (fullWave != null) {
-                    val shortArray = ShortArray(fullWave.samples.size) {
-                        (fullWave.samples[it] * 32767f).toInt().toShort()
-                    }
-                    val tokens = engine.beamSearch(modelRef, shortArray)
-                    engine.decodeTokens(modelRef, tokens).trim()
-                } else ""
+                if (fullWave != null) decodeSegment(SpeechSegment(0, fullWave.samples)) else ""
             }
-        }
 
         Log.i(TAG, "flush completed, final transcript: " + finalTranscript)
         return finalTranscript
     }
 
-    private fun decodeSegments(segments: List<SpeechSegment>): String {
-        if (segments.isEmpty()) return ""
-        val parts = mutableListOf<String>()
-        for (segment in segments) {
-            val shortArray = ShortArray(segment.samples.size) {
-                (segment.samples[it] * 32767f).toInt().toShort()
-            }
-            val tokens = engine.beamSearch(modelRef, shortArray)
-            val text = engine.decodeTokens(modelRef, tokens).trim()
-            if (text.isNotBlank()) parts.add(text)
+    private fun decodeSegment(segment: SpeechSegment): String {
+        val shortArray = ShortArray(segment.samples.size) {
+            (segment.samples[it] * 32767f).toInt().toShort()
         }
-        return parts.joinToString(" ")
+        val tokens = decodeHook.beamSearch(modelRef!!, shortArray)
+        return decodeHook.decodeTokens(modelRef!!, tokens).trim()
     }
 
     override fun close() {
@@ -156,6 +193,5 @@ internal class DolphinAttnSession(
 
     private companion object {
         const val TAG = "DolphinAttnSession"
-        const val VAD_SEGMENT_QUEUE_SIZE = 5
     }
 }

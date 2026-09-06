@@ -13,7 +13,8 @@ today's stop-then-transcribe path.
 this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring). Builds on
 21/22 (sherpa integration + sherpa VAD notes). Not blocked by anything else.
 
-**Status:** ready-for-agent
+**Status:** ready-for-human (implementation + JVM tests done; final on-device A50
+verification below is a human step)
 
 ## Decisions (2026-09-05, before implementation)
 
@@ -56,28 +57,31 @@ this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring
 
 ## Acceptance Criteria
 
-- [ ] `WhisperEngine` gains a streaming seam (`createSession(...): TranscriptionSession?` +
+- [x] `WhisperEngine` gains a streaming seam (`createSession(...): TranscriptionSession?` +
   a `TranscriptionSession` interface: non-blocking `accept(samples)`, ordered
   `partials` flow, `suspend flush(): String`, `close()`). GGML returns null.
-- [ ] Live partials: while `recording`, each completed VAD utterance's text is published and
+- [x] Live partials: while `recording`, each completed VAD utterance's text is published and
   the on-screen transcript grows as the user speaks; DolphinAttn, sherpa Whisper ONNX, and
   Dolphin CTC all show this.
-- [ ] Stop = `flush()`: VAD tail utterance decoded, final text joined, copy/notify/history
+- [x] Stop = `flush()`: VAD tail utterance decoded, final text joined, copy/notify/history
   run exactly as today on the final transcript.
-- [ ] DolphinAttn correctness (ticket 29, MUST NOT regress): per-segment `ur`/`PK` prefix,
+- [x] DolphinAttn correctness (ticket 29, MUST NOT regress): per-segment `ur`/`PK` prefix,
   per-segment KV cache, fp16 KV, length-normalized beam — unchanged.
-- [ ] Threading: VAD touched only by the capture thread; recognizer/ORT sessions only by the
-  single decode worker; mic capture never blocks on decode (bounded segment queue OK).
-- [ ] Fallback: GGML models and "session could not start" run today's whole-clip batch
+- [x] Threading: VAD touched only by the capture thread; recognizer/ORT sessions only by the
+  single decode worker; mic capture never blocks on decode. **Segment queue is unbounded
+  (`Channel.UNLIMITED`)** — decided after the drop-at-flush finding (see Comments), replacing
+  the original "bounded segment queue OK" wording.
+- [x] Fallback: GGML models and "session could not start" run today's whole-clip batch
   `transcribe`; zero segments → whole-clip decode of accumulated audio → blank text keeps the
   existing "No speech detected" handling.
-- [ ] Unit tests (JVM, fake `VadLike`, no native lib): the live drainer emits segments
+- [x] Unit tests (JVM, fake `VadLike`, no native lib): the live drainer emits segments
   immediately per window + on `flush` tail; `createSession` returns null for a
-  non-streaming engine. All existing tests (`:app:testDebugUnitTest`, 32 today) stay green;
-  `assembleDebug` builds; `lintDebug` adds no new errors.
+  non-streaming engine. `:app:testDebugUnitTest` stays green (**53 tests today**, incl. the
+  new 4-case `StreamingSessionNoDropTest`); `assembleDebug` builds; `lintDebug` adds no new
+  errors (the pre-existing `AudioRecorder.kt:45` MissingPermission stays).
 - [ ] On-device (A50): dictating a multi-phrase clip shows partials appearing per phrase while
   recording; Stop's final text equals the ticket-30 batch result for the same audio; log the
-  per-phrase publish latency.
+  per-phrase publish latency. **(pending — human/device step)**
 
 ## Implementation outline
 
@@ -91,17 +95,22 @@ this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring
 3. **`AarWhisperEngine`** — `createSession` returns null (whisper.cpp AAR stays batch).
 4. **`SherpaOfflineSession`** (new, shared by sherpa Whisper + Dolphin CTC) — wraps a
    sherpa `OfflineRecognizer` + a per-session `SherpaVad`; `accept()` feeds 512-window chunks
-   and enqueues closed `SpeechSegment`s to a bounded `Channel`; the decode worker
-   createStream→`acceptWaveform`→`decode`→`getResult`→release per segment and emits onto
-   `partials`; `flush()` = `vad.flush()` + decode trailing segment + return joined text;
-   zero segments → fall back to whole-clip decode of accumulated audio. Owns a per-session
-   `CoroutineScope`; `close()` cancels it. (Whisper applies its resolved language via the
-   existing `applyLanguage` before the session starts; Dolphin ignores language as today.)
+   and enqueues closed `SpeechSegment`s to an **unbounded `Channel`** (`Channel.UNLIMITED`);
+   the decode worker createStream→`acceptWaveform`→`decode`→`getResult`→release per segment
+   and emits onto `partials`; `flush()` = `vad.flush()` + **close the channel then
+   `worker.join()`** (so every queued segment, live and tail, is decoded — nothing dropped on
+   a slow worker) + return joined text; zero segments → fall back to whole-clip decode of
+   accumulated audio. Owns a per-session `CoroutineScope`; `close()` cancels it. (Whisper
+   applies its resolved language via the existing `applyLanguage` before the session starts;
+   Dolphin ignores language as today.) Tested through the `SherpaRecognizerLike` seam.
 5. **`DolphinAttnEngine`** — `DolphinAttnSession` (parallel shape): `accept()` feeds
    windows to the resident `vad`; closed segments are converted back to `ShortArray` and the
    decode worker runs the existing `beamSearch` + `decodeTokens` per segment (per-segment KV
-   cache, ur/PK prefix — unchanged); `flush()` = `vad.flush()` + decode tail + join; zero
-   segments → whole-clip `beamSearch(ref, accumulated)` fallback (ticket-30 semantics).
+   cache, ur/PK prefix — unchanged) from an **unbounded `Channel`**; `flush()` = drain the VAD
+   tail into the channel, then close + `worker.join()` (same no-drop guarantee) + return
+   joined text; zero segments → whole-clip `beamSearch(ref, accumulated)` fallback (ticket-30
+   semantics). Tested through the new `DolphinRecognizerLike` seam (interface implemented by
+   the engine + a test-only session ctor).
 6. **`VadSegmentation.kt`** — add a live drainer shared by both session types: push one
    window at a time into `VadLike` and return any segments closed by that push
    (`vad.isSpeechDetected()` → drain `front()`/`pop()`), plus a `flushAndDrain()` for the
@@ -137,14 +146,21 @@ this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring
 - Sherpa engines: identical `applyLanguage`/`resolveLanguage` semantics as batch `transcribe`;
   a fresh `OfflineStream` per segment (never reused); stream released in `finally`.
 - Segment order is preserved end-to-end (capture order = channel order = `partials` order);
-  `flush()` never races the decode worker ahead of queued segments.
+  `flush()` **joins the decode worker** after closing the channel, so it never races ahead of
+  or drops queued segments — live and tail are all decoded before the final transcript is
+  composed.
 
 ## Open items to confirm during implementation
 
 1. **`maxSpeechDuration`:** keep 5.0 s (live phrase cap) vs raise (longer phrases, higher
    per-utterance decode ceiling). Verify per-phrase publish latency on the A50; tune there.
-2. **Bounded segment queue size** (drain rate vs decode rate) — pick a bound that backs off
-   the frame listener before it drops audio; document the A50-measured steady-state.
+   *(Still open — tune on-device.)*
+2. **Segment queue bound — RESOLVED (2026-09-06):** unbounded. The original plan assumed a
+   bounded queue with back-pressure; on-device observation showed the live decode worker
+   (beam search) can fall behind capture and a small bound silently **dropped segments 6+**
+   via `trySend`+drop, corrupting the transcript. Both sessions now use
+   `Channel(Channel.UNLIMITED)` and `flush()` joins the worker, so no segment is ever dropped
+   at enqueue or at stop. Covered by `StreamingSessionNoDropTest`.
 3. **`transcribing` flag semantics** during live decode — decide between "stays false while
    recording (partials are live)" and a tri-state; keep the change minimal.
 4. **Live text in the recording notification** — explicitly out of scope here; add a follow-up
@@ -153,9 +169,10 @@ this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring
 ## Verification
 
 - **JVM unit tests** (no device): the live drainer + session-null behavior via the
-  `VadLike`/`WhisperEngine` seams; all existing tests stay green.
+  `VadLike`/`WhisperEngine` seams, plus the new `StreamingSessionNoDropTest` (no-drop on a
+  slow worker, tail preserved); **53 tests, all green**.
 - **Build:** `./gradlew :app:assembleDebug` and `:app:testDebugUnitTest`; `lintDebug` no new
-  errors (the pre-existing `AudioRecorder.kt:37` MissingPermission stays).
+  errors (the pre-existing `AudioRecorder.kt:45` MissingPermission stays).
 - **On-device A50:** multi-phrase Urdu dictation — confirm partials appear per phrase while
   recording, Stop final equals ticket-30 batch output for the same clip, and log
   per-phrase publish latency.
@@ -170,3 +187,40 @@ this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring
   tiny + Dolphin-base APKs). That is exactly the pattern encoded here, extended to the
   custom DolphinAttn engine. GGML (whisper.cpp AAR) is deliberately excluded — its API is
   batch-only.
+- **2026-09-06**: **No-drop fix + deterministic tests** (final chunk of this ticket).
+  - **Root cause found:** the sessions used a 5-segment bounded `Channel` with
+    `trySend`+drop. When the live decode worker (DolphinAttn beam search) fell behind the
+    capture thread, segments 6+ were silently dropped mid-recording; `flush()` also
+    `scope.cancel()`d the worker without joining it, dropping anything still queued at Stop.
+  - **Fix:** both `DolphinAttnSession` and `SherpaOfflineSession` now use
+    `Channel(Channel.UNLIMITED)`; `flush()` drains the VAD tail into the channel, closes it,
+    then **`worker.join()`s** before cancelling, so every enqueued segment (live + tail) is
+    decoded. Workers collect into `decodedTexts` (authoritative transcript, read after join);
+    `partials` stays best-effort UI.
+  - **Duplicate-transcript bug found after the no-drop build landed:** the old flush composed
+    the final text by prepending the UI's `partialsSnapshot` to the joined `decodedTexts`.
+    With the worker joined, `decodedTexts` already contains every live *and* tail segment, so
+    the prepend doubled the live portion (on-device log showed the first phrases twice).
+    Fixed: the final transcript is now just `decodedTexts.joinToString(" ")`; the
+    `partialsSnapshot` parameter is accepted for signature compatibility but unused.
+    `StreamingSessionNoDropTest` now passes a realistic non-empty snapshot and asserts
+    no duplication (4/4 green; full suite 53 passing).
+  - **First-utterance skip (VAD state carry-over) — fixed:** DolphinAttn reuses ONE
+    resident silero `Vad` (created at model load) for every streaming session *and* batch
+    transcribe, and it was never reset. Silero is stateful (speech-start flag + buffered
+    tail); a previous dictation's `flush()` leaves it mid-speech, which could swallow or
+    merge the next recording's first utterance. Fix: `ref.vad.reset()` at session creation
+    in `DolphinAttnEngine.createSession` and at the top of the batch `segmentWithVad`
+    (clean slate per usage). Sherpa sessions were already safe — they build a fresh `Vad`
+    per session. Verified on-device: 4 back-to-back recordings, first utterance captured
+    every time (the earlier profile showed the culprit pattern: `flush()` at ~2.7 s before
+    speech, controller state shared).
+  - **Testability seams:** `SherpaOfflineSession` gained a `SherpaRecognizerLike` ctor;
+    `DolphinAttnSession` gained a matching `DolphinRecognizerLike` ctor (new `internal
+    interface` implemented by `DolphinAttnEngine`), so both sessions are JVM-testable without
+    native libs or `android.content.Context`.
+  - **Tests:** `StreamingSessionNoDropTest` (4 cases) pushes 7/8 segments (> the old bound)
+    through live + tail paths and asserts none are dropped; stable across repeated runs.
+    Full `:app:testDebugUnitTest` passes (53 tests). `lintDebug` unchanged.
+  - **Remaining:** on-device A50 verification (final AC) + tune open items 1 (`maxSpeechDuration`)
+    and 3 (`transcribing` flag) to taste.
