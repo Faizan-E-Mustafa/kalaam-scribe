@@ -174,11 +174,12 @@ class DolphinAttnEngine(
             try {
                 val silero = SileroVadModelConfig()
                 silero.model = vadModelFile.absolutePath
-                silero.threshold = 0.25f
-                silero.minSilenceDuration = 0.5f
-                silero.minSpeechDuration = 0.5f
+                val app = VoiceDictationApp.from(context)
+                silero.threshold = app.vadThreshold()
+                silero.minSilenceDuration = app.vadMinSilence()
+                silero.minSpeechDuration = app.vadMinSpeech()
                 silero.windowSize = VAD_WINDOW
-                silero.maxSpeechDuration = 30.0f
+                silero.maxSpeechDuration = app.vadMaxSpeech()
 
                 val vadConfig = VadModelConfig()
                 vadConfig.sileroVadModelConfig = silero
@@ -348,7 +349,8 @@ class DolphinAttnEngine(
                 "h=${pre.deKeys[0].remaining() / (ref.headDim * ref.dModel)}")
             val preLogProbs = logSoftmax(pre.fullLogits)
 
-            var beams = topK(preLogProbs, BEAM_SIZE).map { idx ->
+            val beamSize = VoiceDictationApp.from(context).dolphinBeamSize()
+            var beams = topK(preLogProbs, beamSize).map { idx ->
                 val b = Beam(prefix + intArrayOf(idx), preLogProbs[idx], pre.deKeys, pre.deValues)
                 b
             }
@@ -380,12 +382,12 @@ class DolphinAttnEngine(
                     )
                     runs++
                     val lp = logSoftmax(r.fullLogits)
-                    for (idx in topK(lp, BEAM_SIZE)) {
+                    for (idx in topK(lp, beamSize)) {
                         candidates.add(b.extend(idx, lp[idx], r.deKeys, r.deValues))
                     }
                 }
                 candidates.sortByDescending { it.score }
-                beams = candidates.take(BEAM_SIZE)
+                beams = candidates.take(beamSize)
                 // Hard-stop once the best-ranked beam has finished. With greedy this is the
                 // natural decode end; it also short-circuits degenerate no-EOS loops.
                 if (beams.first().tokens.last() == EOS) break

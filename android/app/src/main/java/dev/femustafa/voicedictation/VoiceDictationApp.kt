@@ -137,6 +137,18 @@ class VoiceDictationApp : Application() {
         /** Default thread count; auto-select on first run is capped at this value. */
         const val DEFAULT_WHISPER_THREADS = 4
 
+        // VAD parameter defaults (aligned with sherpa-onnx reference)
+        private const val KEY_VAD_THRESHOLD = "vad_threshold"
+        private const val KEY_VAD_MIN_SILENCE = "vad_min_silence"
+        private const val KEY_VAD_MIN_SPEECH = "vad_min_speech"
+        private const val KEY_VAD_MAX_SPEECH = "vad_max_speech"
+        private const val KEY_DOLPHIN_BEAM_SIZE = "dolphin_beam_size"
+        const val DEFAULT_VAD_THRESHOLD = 0.25f
+        const val DEFAULT_VAD_MIN_SILENCE = 0.5f
+        const val DEFAULT_VAD_MIN_SPEECH = 0.5f
+        const val DEFAULT_VAD_MAX_SPEECH = 30.0f
+        const val DEFAULT_DOLPHIN_BEAM_SIZE = 1
+
         fun from(context: Context): VoiceDictationApp =
             context.applicationContext as VoiceDictationApp
     }
@@ -153,5 +165,46 @@ class VoiceDictationApp : Application() {
     /** Persist the user-chosen thread count (e.g. from the Settings screen). */
     fun setWhisperThreads(count: Int) {
         prefs.edit().putInt(KEY_WHISPER_THREADS, count).apply()
+    }
+
+    // ---- VAD parameters (persisted, shared across all engines) ----
+
+    fun vadThreshold(): Float =
+        prefs.getString(KEY_VAD_THRESHOLD, DEFAULT_VAD_THRESHOLD.toString())?.toFloat()
+            ?: DEFAULT_VAD_THRESHOLD
+
+    fun setVadThreshold(v: Float) {
+        prefs.edit().putString(KEY_VAD_THRESHOLD, v.toString()).apply()
+    }
+
+    fun vadMinSilence(): Float =
+        prefs.getString(KEY_VAD_MIN_SILENCE, DEFAULT_VAD_MIN_SILENCE.toString())?.toFloat()
+            ?: DEFAULT_VAD_MIN_SILENCE
+
+    fun setVadMinSilence(v: Float) {
+        prefs.edit().putString(KEY_VAD_MIN_SILENCE, v.toString()).apply()
+    }
+
+    fun vadMinSpeech(): Float =
+        prefs.getString(KEY_VAD_MIN_SPEECH, DEFAULT_VAD_MIN_SPEECH.toString())?.toFloat()
+            ?: DEFAULT_VAD_MIN_SPEECH
+
+    fun setVadMinSpeech(v: Float) {
+        prefs.edit().putString(KEY_VAD_MIN_SPEECH, v.toString()).apply()
+    }
+
+    fun vadMaxSpeech(): Float =
+        prefs.getString(KEY_VAD_MAX_SPEECH, DEFAULT_VAD_MAX_SPEECH.toString())?.toFloat()
+            ?: DEFAULT_VAD_MAX_SPEECH
+
+    fun setVadMaxSpeech(v: Float) {
+        prefs.edit().putString(KEY_VAD_MAX_SPEECH, v.toString()).apply()
+    }
+
+    fun dolphinBeamSize(): Int =
+        prefs.getInt(KEY_DOLPHIN_BEAM_SIZE, DEFAULT_DOLPHIN_BEAM_SIZE)
+
+    fun setDolphinBeamSize(v: Int) {
+        prefs.edit().putInt(KEY_DOLPHIN_BEAM_SIZE, v).apply()
     }
 }
