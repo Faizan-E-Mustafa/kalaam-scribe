@@ -116,11 +116,11 @@ class DolphinCtcEngine(
         }
         val silero = com.k2fsa.sherpa.onnx.SileroVadModelConfig()
         silero.model = sileroPath
-        silero.threshold = 0.5f
+        silero.threshold = 0.25f
         silero.minSilenceDuration = 0.5f
         silero.minSpeechDuration = 0.5f
         silero.windowSize = 512
-        silero.maxSpeechDuration = 10.0f
+        silero.maxSpeechDuration = 30.0f
         val vadConfig = com.k2fsa.sherpa.onnx.VadModelConfig()
         vadConfig.sileroVadModelConfig = silero
         vadConfig.sampleRate = 16000

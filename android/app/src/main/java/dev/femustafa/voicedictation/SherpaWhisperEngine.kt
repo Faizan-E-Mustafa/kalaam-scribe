@@ -53,6 +53,7 @@ class SherpaWhisperEngine(
             val whisperConfig = OfflineWhisperModelConfig()
             whisperConfig.language = ""
             whisperConfig.task = "transcribe"
+            whisperConfig.tailPaddings = 0
 
             // Derive the ONNX encoder/decoder/tokens file paths from the model entry.
             // sherpa-onnx auto-detects int8 from `int8` in the filename.
@@ -157,11 +158,11 @@ class SherpaWhisperEngine(
         }
         val silero = com.k2fsa.sherpa.onnx.SileroVadModelConfig()
         silero.model = sileroPath
-        silero.threshold = 0.5f
+        silero.threshold = 0.25f
         silero.minSilenceDuration = 0.5f
         silero.minSpeechDuration = 0.5f
         silero.windowSize = 512
-        silero.maxSpeechDuration = 10.0f
+        silero.maxSpeechDuration = 30.0f
         val vadConfig = com.k2fsa.sherpa.onnx.VadModelConfig()
         vadConfig.sileroVadModelConfig = silero
         vadConfig.sampleRate = 16000
@@ -183,6 +184,7 @@ class SherpaWhisperEngine(
         whisperConfig.decoder = real.decoderPath
         whisperConfig.language = lang
         whisperConfig.task = "transcribe"
+        whisperConfig.tailPaddings = 0
 
         val modelConfig = OfflineModelConfig()
         modelConfig.whisper = whisperConfig

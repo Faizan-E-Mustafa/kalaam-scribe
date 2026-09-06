@@ -174,11 +174,11 @@ class DolphinAttnEngine(
             try {
                 val silero = SileroVadModelConfig()
                 silero.model = vadModelFile.absolutePath
-                silero.threshold = 0.5f
-                silero.minSilenceDuration = 0.25f
+                silero.threshold = 0.25f
+                silero.minSilenceDuration = 0.5f
                 silero.minSpeechDuration = 0.5f
                 silero.windowSize = VAD_WINDOW
-                silero.maxSpeechDuration = 5.0f
+                silero.maxSpeechDuration = 30.0f
 
                 val vadConfig = VadModelConfig()
                 vadConfig.sileroVadModelConfig = silero
