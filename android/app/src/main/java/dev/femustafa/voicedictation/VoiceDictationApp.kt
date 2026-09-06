@@ -75,6 +75,23 @@ class VoiceDictationApp : Application() {
         prefs.edit().putString(KEY_MODEL_FORMAT, format.name).apply()
     }
 
+    /** The user's chosen transcription mode (simulated streaming default), or the default. */
+    val transcriptionMode: TranscriptionMode
+        get() {
+            val stored = prefs.getString(KEY_TRANSCRIPTION_MODE, null)
+                ?: return TranscriptionMode.SimulatedStreaming
+            return try {
+                TranscriptionMode.valueOf(stored)
+            } catch (_: IllegalArgumentException) {
+                TranscriptionMode.SimulatedStreaming
+            }
+        }
+
+    /** Persist the chosen transcription mode. */
+    fun setTranscriptionMode(mode: TranscriptionMode) {
+        prefs.edit().putString(KEY_TRANSCRIPTION_MODE, mode.name).apply()
+    }
+
     /** Persist + publish a user-picked whisper language code (null/blank = auto). */
     fun setLanguageCode(code: String?) {
         prefs.edit().putString(KEY_LANGUAGE_CODE, code).apply()
@@ -134,6 +151,7 @@ class VoiceDictationApp : Application() {
         private const val KEY_MODEL_ID = "model_id"
         private const val KEY_MODEL_FORMAT = "model_format"
         private const val KEY_WHISPER_THREADS = "whisper_threads"
+        private const val KEY_TRANSCRIPTION_MODE = "transcription_mode"
         /** Default thread count; auto-select on first run is capped at this value. */
         const val DEFAULT_WHISPER_THREADS = 4
 

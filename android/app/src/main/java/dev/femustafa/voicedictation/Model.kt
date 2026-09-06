@@ -27,6 +27,19 @@ enum class ModelFormat {
 }
 
 /**
+ * How dictation turns captured audio into text.
+ * - [Batch] decodes the entire clip as one pass after Stop: no text until the
+ *   recording ends, simplest and works with every backend (including GGML).
+ * - [SimulatedStreaming] opens a [TranscriptionSession]: live VAD splits audio
+ *   into utterances that decode while still recording, growing the transcript
+ *   in real time. Requires a streaming-capable backend; GGML falls back to batch.
+ */
+enum class TranscriptionMode {
+    Batch,
+    SimulatedStreaming,
+}
+
+/**
  * Numerical precision of an ONNX model file. sherpa-onnx auto-detects quantized
  * (int8) models from `int8` in the filename, so this only chooses which file to
  * point at: full-precision fp32, half-precision fp16 (fp16/arm tier), or

@@ -23,6 +23,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,8 @@ fun SettingsScreen(
     val app = VoiceDictationApp.from(context)
 
     var selectedThreads by remember { mutableStateOf(app.whisperThreads()) }
+    var transcriptionMode by remember { mutableStateOf(app.transcriptionMode) }
+    val streamingActive = transcriptionMode == TranscriptionMode.SimulatedStreaming
     var threshold by remember { mutableStateOf(app.vadThreshold()) }
     var minSilence by remember { mutableStateOf(app.vadMinSilence()) }
     var minSpeech by remember { mutableStateOf(app.vadMinSpeech()) }
@@ -69,16 +72,50 @@ fun SettingsScreen(
         }
 
         Spacer(modifier = Modifier.height(8.dp))
-        SectionHeader(text = "VAD Settings")
+        SectionHeader(text = "Transcription Mode")
+        Row(modifier = Modifier.padding(vertical = 4.dp)) {
+            TranscriptionMode.entries.forEach { mode ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = mode == transcriptionMode,
+                        onClick = { transcriptionMode = mode },
+                    )
+                    Text(
+                        when (mode) {
+                            TranscriptionMode.Batch -> "Batch"
+                            TranscriptionMode.SimulatedStreaming -> "Simulated streaming"
+                        },
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        }
+        Text(
+            text = if (streamingActive) {
+                "Show each utterance as you speak. Requires a streaming-capable model; others fall back to batch."
+            } else {
+                "Decode the whole clip after you stop. Best for simple/stable results; works with all models."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
 
-        CompactSlider("Threshold", threshold, { threshold = it }, 0f..1f, "%.2f".format(threshold))
-        CompactSlider("Min Silence", minSilence, { minSilence = it }, 0.1f..5f, "%.1fs".format(minSilence))
-        CompactSlider("Min Speech", minSpeech, { minSpeech = it }, 0.1f..5f, "%.1fs".format(minSpeech))
-        CompactSlider("Max Speech", maxSpeech, { maxSpeech = it }, 5f..60f, "%.0fs".format(maxSpeech))
+        Spacer(modifier = Modifier.height(8.dp))
+        SectionHeader(text = "VAD Settings (streaming only)")
+        val vadDim = Modifier.alpha(if (streamingActive) 1f else 0.4f)
+        Column(modifier = vadDim) {
+            CompactSlider("Threshold", threshold, { threshold = it }, 0f..1f, "%.2f".format(threshold))
+            CompactSlider("Min Silence", minSilence, { minSilence = it }, 0.1f..5f, "%.1fs".format(minSilence))
+            CompactSlider("Min Speech", minSpeech, { minSpeech = it }, 0.1f..5f, "%.1fs".format(minSpeech))
+            CompactSlider("Max Speech", maxSpeech, { maxSpeech = it }, 5f..60f, "%.0fs".format(maxSpeech))
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
         SectionHeader(text = "Dolphin Beam Size")
-        CompactSlider("Beam", beamSize, { beamSize = it }, 1f..5f, "%.0f".format(beamSize), steps = 3)
+        CompactSlider(
+            "Beam", beamSize, { beamSize = it }, 1f..5f, "%.0f".format(beamSize), steps = 3,
+            modifier = Modifier.alpha(if (streamingActive) 1f else 0.4f),
+        )
 
         Spacer(modifier = Modifier.height(16.dp))
 
@@ -89,6 +126,7 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = {
                     selectedThreads = VoiceDictationApp.DEFAULT_WHISPER_THREADS
+                    transcriptionMode = TranscriptionMode.SimulatedStreaming
                     threshold = VoiceDictationApp.DEFAULT_VAD_THRESHOLD
                     minSilence = VoiceDictationApp.DEFAULT_VAD_MIN_SILENCE
                     minSpeech = VoiceDictationApp.DEFAULT_VAD_MIN_SPEECH
@@ -102,6 +140,7 @@ fun SettingsScreen(
             Button(
                 onClick = {
                     app.setWhisperThreads(selectedThreads)
+                    app.setTranscriptionMode(transcriptionMode)
                     app.setVadThreshold(threshold)
                     app.setVadMinSilence(minSilence)
                     app.setVadMinSpeech(minSpeech)
@@ -133,9 +172,10 @@ private fun CompactSlider(
     range: ClosedFloatingPointRange<Float>,
     display: String,
     steps: Int = 0,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .padding(vertical = 2.dp),
         verticalAlignment = Alignment.CenterVertically,

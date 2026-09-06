@@ -89,14 +89,19 @@ class DictationService : Service() {
         // the coroutine below; while that runs, the user may already be speaking.
         app.setRecording(true)
 
-        // Try to open a live streaming session for the resident model. If the backend
-        // does not support streaming (or the model isn't loaded yet) we fall back to
-        // today's whole-clip batch path.
+        // Open a live streaming session only when the user chose simulated streaming
+        // AND the backend supports it. Batch mode always takes the whole-clip path;
+        // a backend that cannot stream (e.g. GGML) silently falls back to batch too.
+        val wantStreaming = app.transcriptionMode == TranscriptionMode.SimulatedStreaming
         serviceScope.launch {
-            val session = try {
-                app.whisper.createSession()
-            } catch (t: Throwable) {
-                Log.w(TAG, "createSession failed; falling back to batch: ${t.message}")
+            val session = if (wantStreaming) {
+                try {
+                    app.whisper.createSession()
+                } catch (t: Throwable) {
+                    Log.w(TAG, "createSession failed; falling back to batch: ${t.message}")
+                    null
+                }
+            } else {
                 null
             }
             streamingSession = session
