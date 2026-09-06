@@ -154,7 +154,7 @@ class ModelDownloader(
     fun dolphinAttnDecoderUrl(encoderUrl: String): String =
         encoderUrl.substringBefore("/encoder.onnx") + "/decoder.onnx"
 
-    /** The shared units.txt URL (the parent-of-variant `dolphin-attn/` dir). */
+    /** The shared units.txt URL (the parent-of-variant `dolphin-attn/` dir, or the variant dir itself). */
     fun dolphinAttnUnitsUrl(encoderUrl: String): String =
         encoderUrl.substringBeforeLast('/').substringBeforeLast('/') + "/units.txt"
 

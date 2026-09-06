@@ -79,6 +79,8 @@ object ModelCatalog {
 
     /** Project-hosted Dolphin attention ASR ONNX pairs (encoder/decoder + units). */
     const val DOLPHIN_ATTN_HF = "$RU_HF/dolphin-attn"
+    /** Project-hosted Dolphin attention int8 ONNX pairs (fp32 quantized to int8). */
+    const val DOLPHIN_ATTN_INT8_HF = "$RU_HF/dolphin-attn-int8"
 
     /** sherpa-onnx-hosted Silero VAD model (shared by all Dolphin attention models;
      *  bundled into the dolphin-attn download as `silero_vad.onnx`). */
@@ -323,22 +325,40 @@ object ModelCatalog {
      * the full logits output) + a shared `units.txt` vocabulary, loaded directly
      * through onnxruntime-android by [DolphinAttnEngine]. Decoding honors an
      * explicit `ur`/`PK` language pin, so unlike the CTC family these respect
-     * the app's language setting for Urdu. Ships the fp16/arm tier; the decoder
-     * filename is `<id>-decoder.onnx` (verts to `.onnx`, NOT int8, since fp16) and
-     * the shared vocab is `dolphin-attn-units.txt`.
+     * the app's language setting for Urdu. Ships two precision tiers: fp16/arm
+     * (dolphin-attn/) and fp32→int8 quantized (dolphin-attn-int8/). The decoder
+     * filename is `<id>-decoder.onnx` and the shared vocab is `dolphin-attn-units.txt`.
      */
     val dolphinAttnModels: List<CatalogEntry> = listOf(
         dolphinAttn(
             id = "dolphin-attn-base",
             displayName = "Dolphin Attn · base",
             encoderUrl = "$DOLPHIN_ATTN_HF/base/encoder.onnx",
-            approxSizeMb = 124,
+            approxSizeMb = 250,
         ),
         dolphinAttn(
             id = "dolphin-attn-small",
             displayName = "Dolphin Attn · small",
             encoderUrl = "$DOLPHIN_ATTN_HF/small/encoder.onnx",
-            approxSizeMb = 378,
+            approxSizeMb = 699,
+        ),
+        CatalogEntry(
+            model = Model(id = "dolphin-attn-int8-base", fileName = "dolphin-attn-int8-base-encoder.onnx", languageMode = LanguageMode.Auto),
+            displayName = "Dolphin Attn · base (int8)",
+            sourceUrl = null,
+            onnxSourceUrl = "$DOLPHIN_ATTN_INT8_HF/base/encoder.onnx",
+            approxSizeMb = 263,
+            isDefault = false,
+            precision = ModelPrecision.INT8,
+        ),
+        CatalogEntry(
+            model = Model(id = "dolphin-attn-int8-small", fileName = "dolphin-attn-int8-small-encoder.onnx", languageMode = LanguageMode.Auto),
+            displayName = "Dolphin Attn · small (int8)",
+            sourceUrl = null,
+            onnxSourceUrl = "$DOLPHIN_ATTN_INT8_HF/small/encoder.onnx",
+            approxSizeMb = 748,
+            isDefault = false,
+            precision = ModelPrecision.INT8,
         ),
     )
 
