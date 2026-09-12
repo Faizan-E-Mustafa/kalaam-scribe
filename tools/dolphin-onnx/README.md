@@ -101,6 +101,7 @@ it handles fp32 and fp16 alike.
 ```
 tools/dolphin-onnx/
   README.md                this file
+  int8-static-quantization-findings.md  analysis + decision on static int8 (2026-09-12)
   .gitignore              ignore *.onnx, etc.
   scripts/
     export_decoder.py      export Dolphin's attention decoder to ONNX
