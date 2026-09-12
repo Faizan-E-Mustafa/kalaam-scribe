@@ -43,6 +43,9 @@ class ModelDownloader(
         // Dolphin CTC model.onnx is a few tens of MB at minimum; this floor
         // rejects stale/truncated downloads before sherpa-onnx tries to load them.
         const val MIN_DOLPHIN_MODEL_BYTES = 1_000_000L
+        // Omnilingual (Meta OmniASR CTC) tokens.txt is smaller (~84 KB) than the
+        // generic ONNX tokens floor; use a lower threshold for it.
+        const val MIN_OMNILINGUAL_TOKENS_BYTES = 50_000L
         // Dolphin attention encoders/decoders are tens to hundreds of MB fp16; this
         // floor rejects truncated downloads the ORT engine would otherwise fail on.
         const val MIN_ATTN_ENC_DEC_BYTES = 1_000_000L
@@ -109,7 +112,7 @@ class ModelDownloader(
         val model = java.io.File(baseDir, entry.model.fileName)
         val tokens = java.io.File(baseDir, OmnilingualEngine.omnilingualTokensName(entry))
         return model.exists() && model.length() >= MIN_DOLPHIN_MODEL_BYTES &&
-            tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES
+            tokens.exists() && tokens.length() >= MIN_OMNILINGUAL_TOKENS_BYTES
     }
 
     /**
@@ -302,6 +305,7 @@ class ModelDownloader(
             tokensName = DolphinCtcEngine.dolphinTokensName(entry),
             label = "Dolphin CTC",
             onProgress = onProgress,
+            minTokensBytes = MIN_ONNX_TOKENS_BYTES,
         )
     }
 
@@ -321,6 +325,7 @@ class ModelDownloader(
             tokensName = OmnilingualEngine.omnilingualTokensName(entry),
             label = "Omnilingual",
             onProgress = onProgress,
+            minTokensBytes = MIN_OMNILINGUAL_TOKENS_BYTES,
         )
     }
 
@@ -335,10 +340,11 @@ class ModelDownloader(
         tokensName: String,
         label: String,
         onProgress: (Float) -> Unit,
+        minTokensBytes: Long = MIN_ONNX_TOKENS_BYTES,
     ): Result {
         val modelTarget = java.io.File(baseDir, entry.model.fileName)
         if (modelTarget.exists() && modelTarget.length() >= MIN_DOLPHIN_MODEL_BYTES) {
-            ensureTokens(entry, modelUrl, tokensName)
+            ensureTokens(entry, modelUrl, tokensName, minTokensBytes)
             onProgress(1f)
             return Result.Success(modelTarget.length())
         }
@@ -510,9 +516,9 @@ class ModelDownloader(
      * derived from the model URL by swapping `model.onnx`/`model.int8.onnx` → `tokens.txt`.
      * Returns true if the file is present afterwards (already there or newly fetched).
      */
-    private fun ensureTokens(entry: CatalogEntry, modelUrl: String, tokensName: String): Boolean {
+    private fun ensureTokens(entry: CatalogEntry, modelUrl: String, tokensName: String, minTokensBytes: Long = MIN_ONNX_TOKENS_BYTES): Boolean {
         val targetFile = java.io.File(baseDir, tokensName)
-        if (targetFile.exists() && targetFile.length() >= MIN_ONNX_TOKENS_BYTES) return true
+        if (targetFile.exists() && targetFile.length() >= minTokensBytes) return true
         if (targetFile.exists()) {
             Log.w(TAG, "discarding undersized $tokensName (${targetFile.length()} bytes)")
             targetFile.delete()
@@ -547,7 +553,7 @@ class ModelDownloader(
                 connection.disconnect()
             }
             if (!ok) tmp.delete()
-            return ok && targetFile.exists() && targetFile.length() >= MIN_ONNX_TOKENS_BYTES
+            return ok && targetFile.exists() && targetFile.length() >= minTokensBytes
         } catch (e: Exception) {
             tmp.delete()
             Log.w(TAG, "tokens download failed for $tokensName from $tokensUrl: ${e.message}")
