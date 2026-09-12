@@ -16,8 +16,9 @@ import java.io.File
  * Backs the model picker. Tracks per-model download state (persisted by checking
  * whether the file already exists in app-private storage), the user's selection,
  * and drives [ModelDownloader]. Selection calls [WhisperManager.switchTo] so the
- * resident model and the picker stay consistent. The app is ONNX-only (GGML is
- * disabled), so the picker always lists [ModelCatalog.activeCatalog].
+ * resident model and the picker stay consistent. Disabled model families (GGML
+ * and Dolphin CTC) are retained in code but never offered, so the picker always
+ * lists [ModelCatalog.activeCatalog] (Whisper ONNX + Dolphin attention).
  */
 class ModelPickerViewModel(application: Application) : AndroidViewModel(application) {
 

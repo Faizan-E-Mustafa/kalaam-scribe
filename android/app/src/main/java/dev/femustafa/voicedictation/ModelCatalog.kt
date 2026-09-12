@@ -17,7 +17,9 @@ package dev.femustafa.voicedictation
  *   Urdu. Loaded by [DolphinCtcEngine] via sherpa-onnx's `OfflineDolphinModelConfig`.
  *   Files are a single `model.onnx`/`model.int8.onnx` + `tokens.txt` (no
  *   encoder/decoder split). sherpa-onnx auto-detects the language, so these are all
- *   [LanguageMode.Auto] and the language setting is ignored.
+ *   [LanguageMode.Auto] and the language setting is ignored. This family is
+ *   currently disabled: retained in code but never offered (see [onnxDefault]) —
+ *   the Dolphin attention family below is the supported Dolphin path.
  * - [dolphinAttnModels] — Dolphin attention ASR (DataoceanAI) ONNX encoder+decoder
  *   pairs (dataocean-dolphin-asr), loaded by [DolphinAttnEngine] directly through
  *   onnxruntime-android. Unlike the CTC family, these honor an explicit `ur`/`PK`
@@ -433,10 +435,12 @@ object ModelCatalog {
 
     /**
      * The catalog the picker shows and the app runs: every ONNX-backed model
-     * family. GGML models are disabled but retained (see [ggmlModels]/[ggmlDefault]).
+     * family that is still offered. Disabled families are retained but never
+     * offered: GGML (see [ggmlModels]/[ggmlDefault]) and Dolphin CTC
+     * (see [dolphinCtcModels]). Dolphin attention models stay enabled.
      */
     val activeCatalog: List<CatalogEntry>
-        get() = onnxModels + dolphinCtcModels + dolphinAttnModels
+        get() = onnxModels + dolphinAttnModels
 
     /**
      * The app's default model: the Roman-Urdu int8 ONNX conversion, the ONNX

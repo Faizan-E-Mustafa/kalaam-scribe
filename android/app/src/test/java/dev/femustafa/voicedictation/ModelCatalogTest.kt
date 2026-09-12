@@ -143,22 +143,23 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun activeCatalogIsTheOnnxBackedFamilies() {
+    fun activeCatalogIsTheEnabledOnnxBackedFamilies() {
         val ids = ModelCatalog.activeCatalog.map { it.model.id }
         assertEquals(
-            ModelCatalog.onnxModels.size + ModelCatalog.dolphinCtcModels.size + ModelCatalog.dolphinAttnModels.size,
+            ModelCatalog.onnxModels.size + ModelCatalog.dolphinAttnModels.size,
             ids.size,
         )
-        // A representative of every ONNX-backed family is present...
+        // A representative of every enabled family is present...
         assertTrue(ids.contains("roman-urdu-int8"))
-        assertTrue(ids.contains("dolphin-small-int8"))
         assertTrue(ids.contains("dolphin-attn-small"))
-        // ...and the disabled GGML models are not.
+        // ...and the disabled families (GGML and Dolphin CTC) are not.
         assertFalse(ids.contains("roman-urdu-q4_0"))
         assertFalse(ids.contains("english-full"))
-        assertFalse(ids.contains("multilingual-small-q8"))
+        assertFalse(ids.contains("dolphin-base-int8"))
+        assertFalse(ids.contains("dolphin-small-int8"))
         // byActiveId resolves only active ids.
         assertNull(ModelCatalog.byActiveId("english-full"))
+        assertNull(ModelCatalog.byActiveId("dolphin-small-fp32"))
         assertEquals("roman-urdu-int8", ModelCatalog.byActiveId("roman-urdu-int8")?.model?.id)
     }
 
