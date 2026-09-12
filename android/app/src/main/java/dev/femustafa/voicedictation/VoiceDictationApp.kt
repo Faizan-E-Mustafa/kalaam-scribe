@@ -83,6 +83,14 @@ class VoiceDictationApp : Application() {
         prefs.edit().putString(KEY_TRANSCRIPTION_MODE, mode.name).apply()
     }
 
+    /**
+     * Whether the user has completed first-run language onboarding (picked a
+     * concrete language). Onboarding is required before dictation because the
+     * model list is filtered by it; the choice stays editable afterwards via the
+     * Models screen's Language dropdown.
+     */
+    fun hasSelectedLanguage(): Boolean = prefs.contains(KEY_LANGUAGE_CODE)
+
     /** Persist + publish a user-picked whisper language code (null/blank = auto). */
     fun setLanguageCode(code: String?) {
         prefs.edit().putString(KEY_LANGUAGE_CODE, code).apply()

@@ -304,4 +304,65 @@ class ModelCatalogTest {
         val ids = all.map { it.model.id }.toSet()
         assertEquals(all.size, ids.size)
     }
+
+    @Test
+    fun englishModelsSupportOnlyEnglish() {
+        val en = ModelCatalog.byId("small.en-int8")!!
+        assertTrue(en.supportsLanguage("en"))
+        assertFalse(en.supportsLanguage("ur"))
+        assertFalse(en.supportsLanguage("hi"))
+    }
+
+    @Test
+    fun multilingualModelsSupportEveryWhisperLanguage() {
+        val ml = ModelCatalog.byId("small-int8")!!
+        assertTrue(ml.supportsLanguage("en"))
+        assertTrue(ml.supportsLanguage("ur"))
+        assertTrue(ml.supportsLanguage("hi"))
+        assertTrue(ml.supportsLanguage("haw"))
+        assertFalse(ml.supportsLanguage("zz"))
+    }
+
+    @Test
+    fun romanUrduModelsSupportOnlyUrdu() {
+        val ru = ModelCatalog.byId("roman-urdu-int8")!!
+        assertTrue(ru.supportsLanguage("ur"))
+        assertFalse(ru.supportsLanguage("en"))
+        assertFalse(ru.supportsLanguage("hi"))
+    }
+
+    @Test
+    fun dolphinAttnModelsSupportTheirLanguageTokens() {
+        val dol = ModelCatalog.byId("dolphin-attn-small")!!
+        for (code in ModelCatalog.DOLPHIN_LANGUAGES) {
+            assertTrue("dolphin must support $code", dol.supportsLanguage(code))
+        }
+        assertFalse(dol.supportsLanguage("de"))
+        assertFalse(dol.supportsLanguage("fr"))
+        // The known 16-token coverage from the Dolphin ASR vocab.
+        assertEquals(16, ModelCatalog.DOLPHIN_LANGUAGES.size)
+        assertTrue("ur" in ModelCatalog.DOLPHIN_LANGUAGES)
+        assertTrue("en" in ModelCatalog.DOLPHIN_LANGUAGES)
+    }
+
+    @Test
+    fun filterForLanguageRestrictsActiveCatalog() {
+        val urduIds = ModelCatalog.activeCatalog.filterForLanguage("ur").map { it.model.id }.toSet()
+        assertTrue(urduIds.containsAll(setOf("roman-urdu-int8", "roman-urdu-fp32", "small-int8", "dolphin-attn-small")))
+        // No English-only whisper model is shown for Urdu.
+        assertFalse(urduIds.any { it.contains(".en") })
+
+        val englishIds = ModelCatalog.activeCatalog.filterForLanguage("en").map { it.model.id }.toSet()
+        assertTrue(englishIds.contains("small.en-int8"))
+        assertTrue(englishIds.contains("small-int8"))
+        assertTrue(englishIds.contains("dolphin-attn-base"))
+        assertFalse(englishIds.any { it.startsWith("roman-urdu") })
+
+        // A language without dedicated models still shows the multilingual tier.
+        val hawaiianIds = ModelCatalog.activeCatalog.filterForLanguage("haw").map { it.model.id }.toSet()
+        assertEquals(setOf("tiny-int8", "base-int8", "small-int8"), hawaiianIds)
+
+        // Auto-detect (null) shows the whole active catalog.
+        assertEquals(ModelCatalog.activeCatalog.size, ModelCatalog.activeCatalog.filterForLanguage(null).size)
+    }
 }

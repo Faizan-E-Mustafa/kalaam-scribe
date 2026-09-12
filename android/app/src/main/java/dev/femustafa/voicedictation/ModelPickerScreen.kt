@@ -46,6 +46,12 @@ fun ModelPickerScreen(
     val selectedId by viewModel.selectedId.collectAsState()
     val loadingId by viewModel.loadingId.collectAsState()
     val languageCode by viewModel.languageCode.collectAsState()
+    // Only list Models that support the selected language; Auto-detect (null)
+    // shows the whole catalog. Recomputes live when the language dropdown changes.
+    val code = languageCode
+    val visible = remember(state, code) {
+        if (code == null) state else state.filter { (entry, _) -> entry.supportsLanguage(code) }
+    }
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -66,7 +72,7 @@ fun ModelPickerScreen(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(state, key = { it.first.model.id }) { (entry, dlState) ->
+            items(visible, key = { it.first.model.id }) { (entry, dlState) ->
                 ModelRow(
                     entry = entry,
                     dlState = dlState,

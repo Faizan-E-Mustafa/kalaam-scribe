@@ -125,21 +125,29 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
 
     /**
      * The model id to highlight as selected. This must belong to the *current
-     * catalog*; disabled GGML entries are never selectable. Prefer the user's
-     * persisted selection when it is still active and already downloaded; otherwise
-     * fall back to the first downloaded entry, else the catalog's default.
+     * catalog* and support the currently-selected language (disabled GGML entries
+     * are never selectable). Prefer the user's persisted selection when it is
+     * still active, language-compatible, and already downloaded; otherwise fall
+     * back to the first downloaded compatible entry, else the catalog default when
+     * it is compatible, else the first compatible entry in the list.
      */
     private fun defaultOrPersistedId(): String {
         val catalog = catalogFor(app.modelFormat)
+        val supported = catalog.filterForLanguage(app.whisper.languageCode.value)
         val persisted = app.persistedModelId?.let { ModelCatalog.byId(it) }
         val candidates = buildList {
             if (persisted != null) add(persisted)
-            addAll(catalog)
+            addAll(supported)
         }
         // First downloaded entry, preferring the persisted one; else the default.
         val fallbackDefault =
             if (app.modelFormat == ModelFormat.ONNX) ModelCatalog.onnxDefault else ModelCatalog.ggmlDefault
-        return (candidates.firstOrNull { it in catalog && downloader.isDownloaded(it, app.modelFormat) } ?: fallbackDefault)
-            .model.id
+        val firstDownloaded = candidates.firstOrNull {
+            it in supported && downloader.isDownloaded(it, app.modelFormat)
+        }
+        return (firstDownloaded
+            ?: fallbackDefault.takeIf { it in supported }
+            ?: supported.firstOrNull()
+            ?: fallbackDefault).model.id
     }
 }

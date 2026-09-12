@@ -85,6 +85,17 @@ object ModelCatalog {
     /** Project-hosted Dolphin attention int8 ONNX pairs (fp32 quantized to int8). */
     const val DOLPHIN_ATTN_INT8_HF = "$RU_HF/dolphin-attn-int8"
 
+    /**
+     * The languages the Dolphin attention models (DataoceanAI) can decode. These
+     * are the language tokens present in the Dolphin ASR vocabulary (LANG_IDS in
+     * `tools/dolphin-onnx/scripts/infer_onnx.py`): the model was trained on these
+     * 16 languages and its decoder accepts their `<lang>` pin tokens. The engine
+     * currently verifies only the `ur`/`PK` pin and falls back to it for the rest,
+     * so the other languages are offered but not yet verified (see DolphinAttnEngine).
+     */
+    val DOLPHIN_LANGUAGES: Set<String> =
+        setOf("ur", "hi", "bn", "en", "zh", "ar", "ja", "ko", "ta", "te", "ml", "mr", "gu", "kn", "pa", "or")
+
     /** sherpa-onnx-hosted Silero VAD model (shared by all Dolphin attention models;
      *  bundled into the dolphin-attn download as `silero_vad.onnx`). */
     const val SHERPA_SILERO_VAD =
@@ -531,3 +542,25 @@ val CatalogEntry.modelName: String
         } else {
             "whisper " + model.id.removeSuffix("-fp32").removeSuffix("-int8")
         }
+
+/**
+ * Whether this catalog entry can transcribe [code] (a [WhisperLanguages] code).
+ * Drives the picker's language filter and first-run onboarding:
+ * - Dolphin attention models support their [ModelCatalog.DOLPHIN_LANGUAGES].
+ * - Roman-Urdu models transcribe Urdu (roman/Latin script), so `ur` only.
+ * - English-only whisper models transcribe `en` only.
+ * - Multilingual whisper models support every [WhisperLanguages] entry.
+ */
+fun CatalogEntry.supportsLanguage(code: String): Boolean = when {
+    ModelCatalog.isDolphinAttn(this) -> code in ModelCatalog.DOLPHIN_LANGUAGES
+    model.languageMode == LanguageMode.RomanUrdu -> code == "ur"
+    model.languageMode == LanguageMode.English -> code == "en"
+    else -> WhisperLanguages.supports(code)
+}
+
+/**
+ * Filter a catalog to the entries that support [code]. A null [code] (the
+ * user chose Auto-detect) shows the whole list unfiltered.
+ */
+fun List<CatalogEntry>.filterForLanguage(code: String?): List<CatalogEntry> =
+    if (code == null) this else filter { it.supportsLanguage(code) }

@@ -16,14 +16,25 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 @Composable
 fun RootApp() {
     val context = LocalContext.current.applicationContext
-    val manager = VoiceDictationApp.from(context).whisper
+    val app = VoiceDictationApp.from(context)
+    val manager = app.whisper
     val pickerViewModel: ModelPickerViewModel = viewModel()
     val dictationViewModel: DictationViewModel = viewModel()
 
     var showPicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    // First run: ask the dictation language before showing the app, so the model
+    // list can be filtered by it. Dismissed permanently once a language is chosen.
+    var showOnboarding by remember { mutableStateOf(!app.hasSelectedLanguage()) }
 
-    if (showPicker) {
+    if (showOnboarding) {
+        LanguageOnboardingScreen(
+            onContinue = { code ->
+                app.setLanguageCode(code)
+                showOnboarding = false
+            },
+        )
+    } else if (showPicker) {
         ModelPickerScreen(
             viewModel = pickerViewModel,
             onSelect = { entry ->
