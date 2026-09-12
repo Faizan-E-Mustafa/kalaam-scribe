@@ -185,13 +185,14 @@ class ModelCatalogTest {
     fun activeCatalogIsTheEnabledOnnxBackedFamilies() {
         val ids = ModelCatalog.activeCatalog.map { it.model.id }
         assertEquals(
-            ModelCatalog.onnxModelsActive.size + ModelCatalog.dolphinAttnModels.size,
+            ModelCatalog.onnxModelsActive.size + ModelCatalog.omnilingualModels.size + ModelCatalog.dolphinAttnModels.size,
             ids.size,
         )
         // A representative of every enabled family is present...
         assertTrue(ids.contains("roman-urdu-int8"))
         assertTrue(ids.contains("small.en-int8"))
         assertTrue(ids.contains("dolphin-attn-small"))
+        assertTrue(ids.contains("omnilingual-300m-int8"))
         // ...and the disabled families (GGML, Dolphin CTC, fp32 tiers) are not.
         assertFalse(ids.contains("roman-urdu-q4_0"))
         assertFalse(ids.contains("english-full"))
@@ -208,6 +209,7 @@ class ModelCatalogTest {
         assertNull(ModelCatalog.byActiveId("dolphin-small-fp32"))
         assertNull(ModelCatalog.byActiveId("base.en-fp32"))
         assertEquals("roman-urdu-int8", ModelCatalog.byActiveId("roman-urdu-int8")?.model?.id)
+        assertEquals("omnilingual-300m-int8", ModelCatalog.byActiveId("omnilingual-300m-int8")?.model?.id)
     }
 
     @Test
@@ -300,9 +302,39 @@ class ModelCatalogTest {
     @Test
     fun everyEntryHasUniqueId() {
         val all = ModelCatalog.ggmlModels + ModelCatalog.onnxModels +
-            ModelCatalog.dolphinCtcModels + ModelCatalog.dolphinAttnModels
+            ModelCatalog.dolphinCtcModels + ModelCatalog.omnilingualModels + ModelCatalog.dolphinAttnModels
         val ids = all.map { it.model.id }.toSet()
         assertEquals(all.size, ids.size)
+    }
+
+    @Test
+    fun omnilingualModelIsAutoDetectAndPassesAllLanguageFilters() {
+        val omni = ModelCatalog.byId("omnilingual-300m-int8")!!
+        assertEquals(LanguageMode.Auto, omni.model.languageMode)
+        assertTrue(omni.model.canOverrideLanguage)
+        assertTrue(omni.model.fileName.endsWith("-model.onnx"))
+        assertEquals(OmnilingualEngine.omnilingualTokensName(omni), "${omni.model.id}-tokens.txt")
+        assertNotNull(omni.onnxSourceUrl)
+        assertNull(omni.sourceUrl)
+        assertTrue(omni.onnxSourceUrl!!.endsWith("model.int8.onnx"))
+        assertEquals(ModelPrecision.INT8, omni.precision)
+        // Omnilingual auto-detects from 1600+ languages; no way to pin output language.
+        assertTrue(omni.supportsLanguage("en"))
+        assertTrue(omni.supportsLanguage("ur"))
+        assertTrue(omni.supportsLanguage("hi"))
+        assertTrue(omni.supportsLanguage("haw"))
+        assertFalse(omni.supportsLanguage("zz"))
+    }
+
+    @Test
+    fun omnilingualEntryRoutesCorrectly() {
+        val omni = ModelCatalog.byId("omnilingual-300m-int8")!!
+        assertTrue(ModelCatalog.isOmnilingual(omni))
+        assertTrue(ModelCatalog.isOmnilingualFileName(omni.model.fileName))
+        assertFalse(ModelCatalog.isDolphinCtc(omni))
+        assertFalse(ModelCatalog.isDolphinAttn(omni))
+        assertEquals(omni.model.id, ModelCatalog.byId(omni.model.id)!!.model.id)
+        assertEquals(omni.model.id, ModelCatalog.byActiveId(omni.model.id)!!.model.id)
     }
 
     @Test
@@ -350,20 +382,21 @@ class ModelCatalogTest {
     @Test
     fun filterForLanguageRestrictsActiveCatalog() {
         val urduIds = ModelCatalog.activeCatalog.filterForLanguage("ur").map { it.model.id }.toSet()
-        assertTrue(urduIds.containsAll(setOf("roman-urdu-int8", "roman-urdu-fp32", "small-int8", "dolphin-attn-small")))
+        assertTrue(urduIds.containsAll(setOf("roman-urdu-int8", "roman-urdu-fp32", "small-int8", "dolphin-attn-small", "omnilingual-300m-int8")))
         // No English-only whisper model is shown for Urdu.
         assertFalse(urduIds.any { it.contains(".en") })
 
         val englishIds = ModelCatalog.activeCatalog.filterForLanguage("en").map { it.model.id }.toSet()
         assertTrue(englishIds.contains("small.en-int8"))
         assertTrue(englishIds.contains("small-int8"))
+        assertTrue(englishIds.contains("omnilingual-300m-int8"))
         assertFalse(englishIds.any { it.startsWith("roman-urdu") })
         // Dolphin is advertised for Urdu only, so it must not appear for English.
         assertFalse(englishIds.any { it.startsWith("dolphin-") })
 
-        // A language without dedicated models still shows the multilingual tier.
+        // A language without dedicated models still shows the multilingual tier + omnilingual.
         val hawaiianIds = ModelCatalog.activeCatalog.filterForLanguage("haw").map { it.model.id }.toSet()
-        assertEquals(setOf("tiny-int8", "base-int8", "small-int8"), hawaiianIds)
+        assertEquals(setOf("tiny-int8", "base-int8", "small-int8", "omnilingual-300m-int8"), hawaiianIds)
 
         // Auto-detect (null) shows the whole active catalog.
         assertEquals(ModelCatalog.activeCatalog.size, ModelCatalog.activeCatalog.filterForLanguage(null).size)

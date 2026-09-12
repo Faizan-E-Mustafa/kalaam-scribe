@@ -152,6 +152,7 @@ private fun ModelRow(
         append(entry.modelName)
         entry.precision?.let { append(" · ${it.label}") }
         if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
+        if (ModelCatalog.isOmnilingual(entry)) append(" · auto-detect · 1600+ languages")
     }
 Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),

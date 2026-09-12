@@ -20,6 +20,12 @@ package dev.femustafa.voicedictation
  *   [LanguageMode.Auto] and the language setting is ignored. This family is
  *   currently disabled: retained in code but never offered (see [onnxDefault]) —
  *   the Dolphin attention family below is the supported Dolphin path.
+ * - [omnilingualModels] — Meta's OmniASR CTC (sherpa-onnx port), single
+ *   `model.int8.onnx` + `tokens.txt`. Auto-detects from 1600+ zero-shot languages
+ *   per utterance; sherpa-onnx exposes **no way to pin an output language** (the
+ *   language-conditioned LLM variants are unsupported), so it is [LanguageMode.Auto]
+ *   and, like the multilingual whisper tier, passes the language filter for every
+ *   selected language — the picker labels it "auto-detect · 1600+ languages".
  * - [dolphinAttnModels] — Dolphin attention ASR (DataoceanAI) ONNX encoder+decoder
  *   pairs (dataocean-dolphin-asr), loaded by [DolphinAttnEngine] directly through
  *   onnxruntime-android. Unlike the CTC family, these honor an explicit `ur`/`PK`
@@ -40,6 +46,8 @@ package dev.femustafa.voicedictation
  *   repos (`model.onnx`/`model.int8.onnx` + `tokens.txt` files).
  * - Dolphin attention from the project's own HuggingFace repo `dolphin-attn/`
  *   (encoder/decoder onnx pairs + shared units.txt vocabulary).
+ * - Omnilingual from `csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12`
+ *   HuggingFace repo (`model.int8.onnx` + `tokens.txt`).
  */
 data class CatalogEntry(
     /** The domain [Model] this entry selects (id, fileName, languageMode). */
@@ -84,6 +92,10 @@ object ModelCatalog {
     const val DOLPHIN_ATTN_HF = "$RU_HF/dolphin-attn"
     /** Project-hosted Dolphin attention int8 ONNX pairs (fp32 quantized to int8). */
     const val DOLPHIN_ATTN_INT8_HF = "$RU_HF/dolphin-attn-int8"
+
+    /** sherpa-onnx-port of Meta's OmniASR CTC presentet (1600+ zero-shot languages). */
+    const val OMNILINGUAL_HF =
+        "https://huggingface.co/csukuangfj/sherpa-onnx-omnilingual-asr-1600-languages-300M-ctc-int8-2025-11-12/resolve/main"
 
     /**
      * The languages the Dolphin attention models (DataoceanAI) can decode. These
@@ -355,6 +367,40 @@ object ModelCatalog {
     )
 
     /**
+     * Omnilingual (Meta OmniASR CTC, sherpa-onnx port) catalog. A single
+     * `model.int8.onnx` + `tokens.txt` (the 300M int8 tier, downloaded ~348 MB,
+     * CPU RTF ~0.23). The fileName is the model file; the tokens file is derived
+     * as `<id>-tokens.txt` by [OmnilingualEngine]/[ModelDownloader]. Auto-detects
+     * the language per utterance; sherpa-onnx cannot pin an output language, so
+     * the language setting is ignored (see [supportsLanguage]).
+     */
+    val omnilingualModels: List<CatalogEntry> = listOf(
+        omnilingual(
+            id = "omnilingual-300m-int8",
+            displayName = "Omnilingual · 1600+ languages",
+            modelUrl = "$OMNILINGUAL_HF/model.int8.onnx",
+            approxSizeMb = 348,
+        ),
+    )
+
+    private fun omnilingual(
+        id: String,
+        displayName: String,
+        modelUrl: String,
+        approxSizeMb: Long,
+    ): CatalogEntry = CatalogEntry(
+        // No way to pin the output language in sherpa-onnx, so it is always Auto
+        // and the user language selection is not applied (the engine ignores it).
+        model = Model(id = id, fileName = "$id-model.onnx", languageMode = LanguageMode.Auto),
+        displayName = displayName,
+        sourceUrl = null,
+        onnxSourceUrl = modelUrl,
+        approxSizeMb = approxSizeMb,
+        isDefault = false,
+        precision = ModelPrecision.INT8,
+    )
+
+    /**
      * Dolphin attention ASR catalog (DataoceanAI, exported by DakeQQ). These are
      * ONNX encoder + decoder.onnx pairs (the decoder is graph-surgeried to expose
      * the full logits output) + a shared `units.txt` vocabulary, loaded directly
@@ -486,10 +532,10 @@ object ModelCatalog {
      * family that is still offered. Disabled families are retained but never
      * offered: GGML (see [ggmlModels]/[ggmlDefault]), Dolphin CTC
      * (see [dolphinCtcModels]), and the English/multilingual fp32 tiers
-     * (see [onnxModelsDisabled]). Dolphin attention models stay enabled.
+     * (see [onnxModelsDisabled]). Dolphin attention and Omnilingual stay enabled.
      */
     val activeCatalog: List<CatalogEntry>
-        get() = onnxModelsActive + dolphinAttnModels
+        get() = onnxModelsActive + omnilingualModels + dolphinAttnModels
 
     /**
      * The app's default model: the Roman-Urdu int8 ONNX conversion, the ONNX
@@ -499,9 +545,9 @@ object ModelCatalog {
     val onnxDefault: CatalogEntry
         get() = byActiveId("roman-urdu-int8") ?: error("roman-urdu-int8 must resolve")
 
-    /** Look up by model id across all four catalogs. */
+    /** Look up by model id across all five catalogs. */
     fun byId(id: String): CatalogEntry? =
-        (ggmlModels + onnxModels + dolphinCtcModels + dolphinAttnModels).firstOrNull { it.model.id == id }
+        (ggmlModels + onnxModels + dolphinCtcModels + omnilingualModels + dolphinAttnModels).firstOrNull { it.model.id == id }
 
     /** Look up an active (ONNX-backed) catalog entry by id, or null. */
     fun byActiveId(id: String): CatalogEntry? = activeCatalog.firstOrNull { it.model.id == id }
@@ -524,34 +570,46 @@ object ModelCatalog {
     /** Whether the model file [fileName] belongs to a Dolphin attention catalog entry. */
     fun isDolphinAttnFileName(fileName: String): Boolean =
         dolphinAttnModels.any { it.model.fileName == fileName }
+
+    /** Whether [entry] is an Omnilingual model (loaded by [OmnilingualEngine]). */
+    fun isOmnilingual(entry: CatalogEntry): Boolean =
+        entry in omnilingualModels
+
+    /** Whether the model file [fileName] belongs to an Omnilingual catalog entry. */
+    fun isOmnilingualFileName(fileName: String): Boolean =
+        omnilingualModels.any { it.model.fileName == fileName }
 }
 
 /**
  * A technical engine+size name for the picker subtext, e.g. `whisper tiny.en`,
- * `whisper roman-urdu`, `dolphin base`. Whisper ids carry a `-fp32`/`-int8`
- * precision suffix that is stripped; Dolphin ids carry an `-attn-`/`-int8-`
- * infix, so the engine prefix is applied explicitly.
+ * `whisper roman-urdu`, `dolphin base`, `omnilingual 300m`. Whisper ids carry a
+ * `-fp32`/`-int8` precision suffix that is stripped; Dolphin ids carry an
+ * `-attn-`/`-int8-` infix, so the engine prefix is applied explicitly.
  */
 val CatalogEntry.modelName: String
     get() =
-        if (model.id.startsWith("dolphin-attn")) {
-            "dolphin " + model.id
+        when {
+            model.id.startsWith("dolphin-attn") -> "dolphin " + model.id
                 .removePrefix("dolphin-attn-int8-")
                 .removePrefix("dolphin-attn-")
-        } else {
-            "whisper " + model.id.removeSuffix("-fp32").removeSuffix("-int8")
+            ModelCatalog.isOmnilingual(this) ->
+                "omnilingual " + model.id.removeSuffix("-int8").removePrefix("omnilingual-")
+            else -> "whisper " + model.id.removeSuffix("-fp32").removeSuffix("-int8")
         }
 
 /**
  * Whether this catalog entry can transcribe [code] (a [WhisperLanguages] code).
  * Drives the picker's language filter and first-run onboarding:
  * - Dolphin attention models support their [ModelCatalog.DOLPHIN_LANGUAGES].
+ * - Omnilingual auto-detects from 1600+ zero-shot languages (no way to pin an
+ *   output language in sherpa-onnx), so it passes every [WhisperLanguages] code.
  * - Roman-Urdu models transcribe Urdu (roman/Latin script), so `ur` only.
  * - English-only whisper models transcribe `en` only.
  * - Multilingual whisper models support every [WhisperLanguages] entry.
  */
 fun CatalogEntry.supportsLanguage(code: String): Boolean = when {
     ModelCatalog.isDolphinAttn(this) -> code in ModelCatalog.DOLPHIN_LANGUAGES
+    ModelCatalog.isOmnilingual(this) -> WhisperLanguages.supports(code)
     model.languageMode == LanguageMode.RomanUrdu -> code == "ur"
     model.languageMode == LanguageMode.English -> code == "en"
     else -> WhisperLanguages.supports(code)

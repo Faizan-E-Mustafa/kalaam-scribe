@@ -74,6 +74,7 @@ class ModelDownloader(
         onProgress: (Float) -> Unit,
     ): Result = when {
         ModelCatalog.isDolphinCtc(entry) -> downloadDolphinCtc(entry, onProgress)
+        ModelCatalog.isOmnilingual(entry) -> downloadOmnilingual(entry, onProgress)
         ModelCatalog.isDolphinAttn(entry) -> downloadDolphinAttn(entry, onProgress)
         format == ModelFormat.GGML -> downloadGGML(entry, onProgress)
         else -> downloadONNX(entry, onProgress)
@@ -82,6 +83,7 @@ class ModelDownloader(
     /** Whether [entry] already has a downloaded file for [format]. */
     fun isDownloaded(entry: CatalogEntry, format: ModelFormat): Boolean = when {
         ModelCatalog.isDolphinCtc(entry) -> dolphinComplete(entry)
+        ModelCatalog.isOmnilingual(entry) -> omnilingualComplete(entry)
         ModelCatalog.isDolphinAttn(entry) -> dolphinAttnComplete(entry)
         format == ModelFormat.GGML -> java.io.File(baseDir, entry.model.fileName).exists()
         else -> onnxComplete(entry)
@@ -95,6 +97,17 @@ class ModelDownloader(
     fun dolphinComplete(entry: CatalogEntry): Boolean {
         val model = java.io.File(baseDir, entry.model.fileName)
         val tokens = java.io.File(baseDir, DolphinCtcEngine.dolphinTokensName(entry))
+        return model.exists() && model.length() >= MIN_DOLPHIN_MODEL_BYTES &&
+            tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES
+    }
+
+    /**
+     * True when both Omnilingual files (model.int8.onnx + tokens.txt) exist with
+     * plausible sizes. Same shape as a Dolphin CTC model (single model + tokens).
+     */
+    fun omnilingualComplete(entry: CatalogEntry): Boolean {
+        val model = java.io.File(baseDir, entry.model.fileName)
+        val tokens = java.io.File(baseDir, OmnilingualEngine.omnilingualTokensName(entry))
         return model.exists() && model.length() >= MIN_DOLPHIN_MODEL_BYTES &&
             tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES
     }
@@ -284,22 +297,61 @@ class ModelDownloader(
     ): Result {
         val url = entry.onnxSourceUrl
             ?: return Result.Failure("No ONNX URL for model ${entry.model.id}")
+        return downloadSingleModelWithTokens(
+            entry, url,
+            tokensName = DolphinCtcEngine.dolphinTokensName(entry),
+            label = "Dolphin CTC",
+            onProgress = onProgress,
+        )
+    }
+
+    /**
+     * Download an Omnilingual model: its single `model.int8.onnx` (from
+     * [CatalogEntry.onnxSourceUrl]) plus the sibling `tokens.txt`, renamed to
+     * `<id>-model.onnx` + `<id>-tokens.txt`. Same shape as Dolphin CTC.
+     */
+    private suspend fun downloadOmnilingual(
+        entry: CatalogEntry,
+        onProgress: (Float) -> Unit,
+    ): Result {
+        val url = entry.onnxSourceUrl
+            ?: return Result.Failure("No ONNX URL for model ${entry.model.id}")
+        return downloadSingleModelWithTokens(
+            entry, url,
+            tokensName = OmnilingualEngine.omnilingualTokensName(entry),
+            label = "Omnilingual",
+            onProgress = onProgress,
+        )
+    }
+
+    /**
+     * Download a single-model + sibling-tokens catalog entry (Dolphin CTC,
+     * Omnilingual): the model file from [modelUrl] renamed to `<id>-model.onnx`,
+     * then the then-sibling `tokens.txt` derived by URL substitution.
+     */
+    private suspend fun downloadSingleModelWithTokens(
+        entry: CatalogEntry,
+        modelUrl: String,
+        tokensName: String,
+        label: String,
+        onProgress: (Float) -> Unit,
+    ): Result {
         val modelTarget = java.io.File(baseDir, entry.model.fileName)
         if (modelTarget.exists() && modelTarget.length() >= MIN_DOLPHIN_MODEL_BYTES) {
-            ensureDolphinTokens(entry, url)
+            ensureTokens(entry, modelUrl, tokensName)
             onProgress(1f)
             return Result.Success(modelTarget.length())
         }
 
         val modelTmp = java.io.File(baseDir, "${entry.model.fileName}.part")
-        val connection = URL(url).openConnection() as HttpURLConnection
+        val connection = URL(modelUrl).openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
             connection.connect()
             val code = connection.responseCode
             if (code != HttpURLConnection.HTTP_OK) {
-                return httpFailure(code, url)
+                return httpFailure(code, modelUrl)
             }
             val total = connection.contentLengthLong
             var downloaded = 0L
@@ -320,7 +372,7 @@ class ModelDownloader(
 
             if (modelTmp.renameTo(modelTarget)) {
                 modelTmp.delete()
-                ensureDolphinTokens(entry, url)
+                ensureTokens(entry, modelUrl, tokensName)
                 onProgress(1f)
                 return Result.Success(downloaded)
             }
@@ -454,23 +506,22 @@ class ModelDownloader(
     }
 
     /**
-     * Best-effort download of a Dolphin CTC model's sibling `tokens.txt`, derived
-     * from the model URL by swapping `model.onnx`/`model.int8.onnx` → `tokens.txt`.
+     * Best-effort download of a single-model catalog entry's sibling `tokens.txt`,
+     * derived from the model URL by swapping `model.onnx`/`model.int8.onnx` → `tokens.txt`.
      * Returns true if the file is present afterwards (already there or newly fetched).
      */
-    private fun ensureDolphinTokens(entry: CatalogEntry, modelUrl: String): Boolean {
-        val targetName = DolphinCtcEngine.dolphinTokensName(entry)
-        val targetFile = java.io.File(baseDir, targetName)
+    private fun ensureTokens(entry: CatalogEntry, modelUrl: String, tokensName: String): Boolean {
+        val targetFile = java.io.File(baseDir, tokensName)
         if (targetFile.exists() && targetFile.length() >= MIN_ONNX_TOKENS_BYTES) return true
         if (targetFile.exists()) {
-            Log.w(TAG, "discarding undersized $targetName (${targetFile.length()} bytes)")
+            Log.w(TAG, "discarding undersized $tokensName (${targetFile.length()} bytes)")
             targetFile.delete()
         }
         val int8 = modelUrl.endsWith("model.int8.onnx")
         val base = if (int8) modelUrl.substringBefore("model.int8.onnx")
             else modelUrl.substringBefore("model.onnx")
         val tokensUrl = base + "tokens.txt"
-        val tmp = java.io.File(baseDir, "$targetName.part")
+        val tmp = java.io.File(baseDir, "$tokensName.part")
         try {
             val connection = URL(tokensUrl).openConnection() as HttpURLConnection
             var ok = false
@@ -499,7 +550,7 @@ class ModelDownloader(
             return ok && targetFile.exists() && targetFile.length() >= MIN_ONNX_TOKENS_BYTES
         } catch (e: Exception) {
             tmp.delete()
-            Log.w(TAG, "Dolphin tokens download failed for $targetName from $tokensUrl: ${e.message}")
+            Log.w(TAG, "tokens download failed for $tokensName from $tokensUrl: ${e.message}")
             return false
         }
     }

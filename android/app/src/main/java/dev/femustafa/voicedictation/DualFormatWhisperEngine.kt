@@ -14,13 +14,15 @@ import kotlinx.coroutines.sync.withLock
  *    auto-detect language)
  *  - Dolphin attention → [DolphinAttnEngine] (onnxruntime-android encoder+decoder,
  *    honors the ur/PK language pin)
+ *  - Omnilingual → [OmnilingualEngine] (sherpa-onnx OfflineOmnilingualAsrCtcModelConfig,
+ *    auto-detect from 1600+ languages, no way to pin output language)
  *
  * Lets a user choose between GGML and ONNX for the same underlying Whisper model
  * and have both work (Ticket 21). The chosen format is read at load time from
  * [VoiceDictationApp.modelFormat] for Whisper models, so switching format +
- * re-selecting a model reloads it with the matching backend. Dolphin CTC and
- * Dolphin attention models are always routed to their dedicated engines regardless
- * of the Whisper format.
+ * re-selecting a model reloads it with the matching backend. Dolphin CTC, Dolphin
+ * attention, and Omnilingual models are always routed to their dedicated engines
+ * regardless of the Whisper format.
  *
  * The backends return different, unrelated handle types, so this class wraps every
  * handle with its own [DualModelRef] carrying the backend; that lets
@@ -30,7 +32,7 @@ class DualFormatWhisperEngine(
     private val context: Context,
 ) : WhisperEngine {
 
-    private enum class Backend { GGML, ONNX, DOLPHIN_CTC, DOLPHIN_ATTN }
+    private enum class Backend { GGML, ONNX, DOLPHIN_CTC, DOLPHIN_ATTN, OMNILINGUAL }
 
     private class DualModelRef(
         val backend: Backend,
@@ -41,6 +43,7 @@ class DualFormatWhisperEngine(
     private val onnxEngine = SherpaWhisperEngine(context)
     private val dolphinCtcEngine = DolphinCtcEngine(context)
     private val dolphinAttnEngine = DolphinAttnEngine(context)
+    private val omnilingualEngine = OmnilingualEngine(context)
 
     private fun engineFor(format: ModelFormat): WhisperEngine = when (format) {
         ModelFormat.GGML -> ggmlEngine
@@ -63,6 +66,11 @@ class DualFormatWhisperEngine(
         if (ModelCatalog.isDolphinCtcFileName(fileName)) {
             Log.i(TAG, "loading Dolphin CTC model: $modelPath")
             return DualModelRef(Backend.DOLPHIN_CTC, dolphinCtcEngine.load(modelPath))
+        }
+        // Omnilingual models load through their own engine, also format-independent.
+        if (ModelCatalog.isOmnilingualFileName(fileName)) {
+            Log.i(TAG, "loading Omnilingual model: $modelPath")
+            return DualModelRef(Backend.OMNILINGUAL, omnilingualEngine.load(modelPath))
         }
         val format = currentFormat()
         Log.i(TAG, "loading model with format $format: $modelPath")
@@ -88,6 +96,7 @@ class DualFormatWhisperEngine(
             Backend.ONNX -> onnxEngine.transcribe(real.delegate, audioPath, languageMode, language)
             Backend.DOLPHIN_CTC -> dolphinCtcEngine.transcribe(real.delegate, audioPath, languageMode, language)
             Backend.DOLPHIN_ATTN -> dolphinAttnEngine.transcribe(real.delegate, audioPath, languageMode, language)
+            Backend.OMNILINGUAL -> omnilingualEngine.transcribe(real.delegate, audioPath, languageMode, language)
         }
     }
 
@@ -101,10 +110,6 @@ class DualFormatWhisperEngine(
         val real = model as? DualModelRef
             ?: throw IllegalArgumentException("unexpected model handle")
 
-        // Serialise session creation so the resident model isn't borrowed twice
-        // (WhisperManager.sessionMutex already gates this across the app, but
-        // we also hold the engine's own mutex to prevent races between concurrent
-        // release()/createSession() calls).
         return sessionMutex.withLock {
             when (real.backend) {
                 // The whisper.cpp GGML backend has no incremental API — batch only.
@@ -112,6 +117,7 @@ class DualFormatWhisperEngine(
                 Backend.ONNX -> onnxEngine.createSession(real.delegate, languageMode, language)
                 Backend.DOLPHIN_CTC -> dolphinCtcEngine.createSession(real.delegate, languageMode, language)
                 Backend.DOLPHIN_ATTN -> dolphinAttnEngine.createSession(real.delegate, languageMode, language)
+                Backend.OMNILINGUAL -> omnilingualEngine.createSession(real.delegate, languageMode, language)
             }
         }
     }
@@ -123,6 +129,7 @@ class DualFormatWhisperEngine(
             Backend.ONNX -> onnxEngine.release(real.delegate)
             Backend.DOLPHIN_CTC -> dolphinCtcEngine.release(real.delegate)
             Backend.DOLPHIN_ATTN -> dolphinAttnEngine.release(real.delegate)
+            Backend.OMNILINGUAL -> omnilingualEngine.release(real.delegate)
         }
         Log.i(TAG, "released model (backend ${real.backend})")
     }
