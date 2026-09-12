@@ -332,17 +332,19 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun dolphinAttnModelsSupportTheirLanguageTokens() {
+    fun dolphinAttnModelsAreAdvertisedForUrduOnly() {
         val dol = ModelCatalog.byId("dolphin-attn-small")!!
         for (code in ModelCatalog.DOLPHIN_LANGUAGES) {
             assertTrue("dolphin must support $code", dol.supportsLanguage(code))
         }
+        // Only the ur/PK pin is verified on device; the other 15 vocab languages
+        // are not advertised.
+        assertEquals(setOf("ur"), ModelCatalog.DOLPHIN_LANGUAGES)
+        assertTrue(dol.supportsLanguage("ur"))
+        assertFalse(dol.supportsLanguage("en"))
         assertFalse(dol.supportsLanguage("de"))
         assertFalse(dol.supportsLanguage("fr"))
-        // The known 16-token coverage from the Dolphin ASR vocab.
-        assertEquals(16, ModelCatalog.DOLPHIN_LANGUAGES.size)
-        assertTrue("ur" in ModelCatalog.DOLPHIN_LANGUAGES)
-        assertTrue("en" in ModelCatalog.DOLPHIN_LANGUAGES)
+        assertFalse(dol.supportsLanguage("hi"))
     }
 
     @Test
@@ -355,8 +357,9 @@ class ModelCatalogTest {
         val englishIds = ModelCatalog.activeCatalog.filterForLanguage("en").map { it.model.id }.toSet()
         assertTrue(englishIds.contains("small.en-int8"))
         assertTrue(englishIds.contains("small-int8"))
-        assertTrue(englishIds.contains("dolphin-attn-base"))
         assertFalse(englishIds.any { it.startsWith("roman-urdu") })
+        // Dolphin is advertised for Urdu only, so it must not appear for English.
+        assertFalse(englishIds.any { it.startsWith("dolphin-") })
 
         // A language without dedicated models still shows the multilingual tier.
         val hawaiianIds = ModelCatalog.activeCatalog.filterForLanguage("haw").map { it.model.id }.toSet()

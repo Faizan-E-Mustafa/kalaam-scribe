@@ -89,12 +89,11 @@ object ModelCatalog {
      * The languages the Dolphin attention models (DataoceanAI) can decode. These
      * are the language tokens present in the Dolphin ASR vocabulary (LANG_IDS in
      * `tools/dolphin-onnx/scripts/infer_onnx.py`): the model was trained on these
-     * 16 languages and its decoder accepts their `<lang>` pin tokens. The engine
-     * currently verifies only the `ur`/`PK` pin and falls back to it for the rest,
-     * so the other languages are offered but not yet verified (see DolphinAttnEngine).
+     * 16 languages and its decoder accepts their `<lang>` pin tokens. Only the
+     * `ur`/`PK` pin is verified on device, so Dolphin is offered for Urdu only; the
+     * other 15 languages remain unverified and are not advertised (see DolphinAttnEngine).
      */
-    val DOLPHIN_LANGUAGES: Set<String> =
-        setOf("ur", "hi", "bn", "en", "zh", "ar", "ja", "ko", "ta", "te", "ml", "mr", "gu", "kn", "pa", "or")
+    val DOLPHIN_LANGUAGES: Set<String> = setOf("ur")
 
     /** sherpa-onnx-hosted Silero VAD model (shared by all Dolphin attention models;
      *  bundled into the dolphin-attn download as `silero_vad.onnx`). */
