@@ -126,7 +126,7 @@ fun SettingsScreen(
             OutlinedButton(
                 onClick = {
                     selectedThreads = VoiceDictationApp.DEFAULT_WHISPER_THREADS
-                    transcriptionMode = TranscriptionMode.SimulatedStreaming
+                    transcriptionMode = TranscriptionMode.Batch
                     threshold = VoiceDictationApp.DEFAULT_VAD_THRESHOLD
                     minSilence = VoiceDictationApp.DEFAULT_VAD_MIN_SILENCE
                     minSpeech = VoiceDictationApp.DEFAULT_VAD_MIN_SPEECH

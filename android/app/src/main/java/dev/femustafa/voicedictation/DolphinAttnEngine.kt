@@ -49,10 +49,11 @@ import kotlin.math.min
  * Vocabulary: `units.txt` id→symbol list; decode is SentencePiece `DecodePieces`
  * (leading `▁` → space, concatenate, trim leading space) without needing `bpe.model`.
  *
- * Longer clips are split into per-utterance segments with a resident Silero VAD
- * (sherpa-onnx's `Vad`, model file `silero_vad.onnx` beside the encoder) and each
- * utterance decoded independently before joining — see [transcribeClip]. If the VAD
- * is unavailable or finds no speech, a single whole-clip decode is used instead.
+ * The batch path decodes each clip as a single whole-clip beam search (the highest
+ * quality path, and the one the laptop verifier `verify_dakeqq_beam.py` validates).
+ * The resident Silero VAD (`silero_vad.onnx` beside the encoder) is only used by the
+ * simulated-streaming session ([DolphinAttnSession]), which splits a live clip into
+ * per-utterance segments.
  */
 
 /**
@@ -252,7 +253,10 @@ open class DolphinAttnEngine(
             val audio = readWaveShorts(audioPath)
                 ?: throw IOException("Failed to read wave file: $audioPath")
             Log.i(TAG, "transcribing ${audio.size} samples (${audio.size / SAMPLE_RATE.toDouble()} s)")
-            transcribeClip(ref, audio)
+            // Whole-clip decode: a single beam search over the full clip (the path that
+            // produces the best attention quality). The resident VAD is only used by the
+            // simulated-streaming session, never the batch path.
+            decodeTokens(ref, beamSearch(ref, audio))
         } catch (e: Exception) {
             Log.e(TAG, "dolphin attention transcribe failed", e)
             throw e
@@ -295,51 +299,6 @@ open class DolphinAttnEngine(
             Log.i(TAG, "released Dolphin attention model")
         } catch (e: Exception) {
             Log.w(TAG, "error releasing Dolphin attention model: ${e.message}")
-        }
-    }
-
-    /**
-     * Transcribe [audio] with the resident [ref]. When a Silero VAD is loaded it splits
-     * the clip into per-utterance segments, each decoded independently and joined — the
-     * pattern sherpa-onnx itself uses for Dolphin (VAD → offline decode per utterance),
-     * which avoids one monolithic decode of a long clip. Falls back to a single whole-clip
-     * decode when VAD is unavailable, finds no speech, or every decoded segment is blank
-     * (e.g. segmentation ran on noise) — preserving the pre-VAD behavior and the
-     * "No speech detected" surface.
-     */
-    private fun transcribeClip(ref: DolphinAttnModelRef, audio: ShortArray): String {
-        val vad = ref.vad
-        if (vad == null) {
-            Log.i(TAG, "no Silero VAD loaded; whole-clip decode")
-            return decodeTokens(ref, beamSearch(ref, audio))
-        }
-        val segments = segmentWithVad(vad, audio)
-        if (segments.isEmpty()) {
-            Log.i(TAG, "Silero VAD found no speech in ${audio.size} samples; whole-clip decode")
-            return decodeTokens(ref, beamSearch(ref, audio))
-        }
-        Log.i(TAG, "Silero VAD split ${audio.size} samples into ${segments.size} utterance(s)")
-        val texts = segments.map { decodeTokens(ref, beamSearch(ref, it)) }.filter { it.isNotBlank() }
-        if (texts.isEmpty()) {
-            Log.w(TAG, "all VAD segments decoded blank; whole-clip decode")
-            return decodeTokens(ref, beamSearch(ref, audio))
-        }
-        return texts.joinToString(" ")
-    }
-
-    /**
-     * Feed [audio] to the sherpa Silero [vad] and return each utterance it emits as an
-     * int16 ShortArray ready for [beamSearch]. Shorts are converted to the normalized
-     * float [-1,1] input Silero expects and back to int16 for the fused STFT encoder.
-     */
-    private fun segmentWithVad(vad: Vad, audio: ShortArray): List<ShortArray> {
-        // Clean slate for this clip: the shared resident VAD may carry speech-start /
-        // tail state from a previous streaming session or transcribe.
-        vad.reset()
-        val floats = FloatArray(audio.size) { audio[it] / 32768f }
-        val utterances = segmentAudioWithVad(floats, SherpaVad(vad))
-        return utterances.map { u ->
-            ShortArray(u.samples.size) { (u.samples[it] * 32767f).toInt().toShort() }
         }
     }
 

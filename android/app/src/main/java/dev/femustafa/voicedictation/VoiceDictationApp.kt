@@ -75,15 +75,15 @@ class VoiceDictationApp : Application() {
         prefs.edit().putString(KEY_MODEL_FORMAT, format.name).apply()
     }
 
-    /** The user's chosen transcription mode (simulated streaming default), or the default. */
+    /** The user's chosen transcription mode (batch whole-clip default), or the default. */
     val transcriptionMode: TranscriptionMode
         get() {
             val stored = prefs.getString(KEY_TRANSCRIPTION_MODE, null)
-                ?: return TranscriptionMode.SimulatedStreaming
+                ?: return TranscriptionMode.Batch
             return try {
                 TranscriptionMode.valueOf(stored)
             } catch (_: IllegalArgumentException) {
-                TranscriptionMode.SimulatedStreaming
+                TranscriptionMode.Batch
             }
         }
 
