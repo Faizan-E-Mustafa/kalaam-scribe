@@ -94,6 +94,7 @@ fun isRomanUrdu(modelId: String): Boolean =
  * selection means auto-detect (`"auto"`).
  */
 object WhisperLanguages {
+    /** Alphabetical by English name; used to fill the onboarding and picker dropdowns. */
     val entries: List<Pair<String, String>> = listOf(
         "en" to "English", "zh" to "Chinese", "de" to "German", "es" to "Spanish",
         "ru" to "Russian", "ko" to "Korean", "fr" to "French", "ja" to "Japanese",
@@ -120,7 +121,7 @@ object WhisperLanguages {
         "bo" to "Tibetan", "tl" to "Tagalog", "mg" to "Malagasy", "as" to "Assamese",
         "tt" to "Tatar", "haw" to "Hawaiian", "ln" to "Lingala", "ha" to "Hausa",
         "ba" to "Bashkir", "jw" to "Javanese", "su" to "Sundanese", "yue" to "Cantonese",
-    )
+    ).sortedBy { it.second }
 
     private val byCode: Map<String, String> = entries.toMap()
 
