@@ -16,14 +16,14 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun onnxCatalogHasSixIdentitiesInTwoPrecisionTiers() {
-        // 6 ONNX model identities (tiny, tiny.en, base.en, base, small, roman-urdu) × 2 tiers (fp32, int8).
-        assertEquals(12, ModelCatalog.onnxModels.size)
+    fun onnxCatalogHasSevenIdentitiesInTwoPrecisionTiers() {
+        // 7 ONNX model identities (tiny, tiny.en, base.en, small, small.en, base, roman-urdu) × 2 tiers (fp32, int8).
+        assertEquals(14, ModelCatalog.onnxModels.size)
         assertEquals(ModelPrecision.FP32, ModelCatalog.onnxModels.first().precision)
         assertTrue(ModelCatalog.onnxModels.all { it.precision != null })
         // Each identity is offered in both fp32 and int8.
         val ids = ModelCatalog.onnxModels.map { it.model.id }
-        for (identity in listOf("tiny", "tiny.en", "base.en", "base", "small", "roman-urdu")) {
+        for (identity in listOf("tiny", "tiny.en", "base.en", "small", "small.en", "base", "roman-urdu")) {
             assertTrue("missing fp32 for $identity", ids.contains("$identity-fp32"))
             assertTrue("missing int8 for $identity", ids.contains("$identity-int8"))
         }
@@ -143,23 +143,70 @@ class ModelCatalogTest {
     }
 
     @Test
+    fun onnxActiveIsInt8EnglishAndMultilingualPlusBothRomanUrduTiers() {
+        val activeIds = ModelCatalog.onnxModelsActive.map { it.model.id }.toSet()
+        assertEquals(8, activeIds.size)
+        assertEquals(
+            setOf(
+                "tiny.en-int8", "base.en-int8", "small.en-int8",
+                "tiny-int8", "base-int8", "small-int8",
+                "roman-urdu-fp32", "roman-urdu-int8",
+            ),
+            activeIds,
+        )
+        // The disabled fp32 tiers are exactly the English/multilingual ones.
+        val disabledIds = ModelCatalog.onnxModelsDisabled.map { it.model.id }.toSet()
+        assertEquals(
+            setOf(
+                "tiny.en-fp32", "base.en-fp32", "small.en-fp32",
+                "tiny-fp32", "base-fp32", "small-fp32",
+            ),
+            disabledIds,
+        )
+        assertTrue(ModelCatalog.onnxModelsActive.all { it in ModelCatalog.onnxModels })
+        assertTrue(ModelCatalog.onnxModelsDisabled.all { it in ModelCatalog.onnxModels })
+    }
+
+    @Test
+    fun modelNameIsEnginePrefixedStem() {
+        assertEquals("whisper tiny.en", ModelCatalog.byId("tiny.en-int8")!!.modelName)
+        assertEquals("whisper base.en", ModelCatalog.byId("base.en-int8")!!.modelName)
+        assertEquals("whisper small.en", ModelCatalog.byId("small.en-int8")!!.modelName)
+        assertEquals("whisper tiny", ModelCatalog.byId("tiny-int8")!!.modelName)
+        assertEquals("whisper small", ModelCatalog.byId("small-fp32")!!.modelName)
+        assertEquals("whisper roman-urdu", ModelCatalog.byId("roman-urdu-int8")!!.modelName)
+        assertEquals("dolphin base", ModelCatalog.byId("dolphin-attn-base")!!.modelName)
+        assertEquals("dolphin base", ModelCatalog.byId("dolphin-attn-int8-base")!!.modelName)
+        assertEquals("dolphin small", ModelCatalog.byId("dolphin-attn-small")!!.modelName)
+        assertEquals("dolphin small", ModelCatalog.byId("dolphin-attn-int8-small")!!.modelName)
+    }
+
+    @Test
     fun activeCatalogIsTheEnabledOnnxBackedFamilies() {
         val ids = ModelCatalog.activeCatalog.map { it.model.id }
         assertEquals(
-            ModelCatalog.onnxModels.size + ModelCatalog.dolphinAttnModels.size,
+            ModelCatalog.onnxModelsActive.size + ModelCatalog.dolphinAttnModels.size,
             ids.size,
         )
         // A representative of every enabled family is present...
         assertTrue(ids.contains("roman-urdu-int8"))
+        assertTrue(ids.contains("small.en-int8"))
         assertTrue(ids.contains("dolphin-attn-small"))
-        // ...and the disabled families (GGML and Dolphin CTC) are not.
+        // ...and the disabled families (GGML, Dolphin CTC, fp32 tiers) are not.
         assertFalse(ids.contains("roman-urdu-q4_0"))
         assertFalse(ids.contains("english-full"))
         assertFalse(ids.contains("dolphin-base-int8"))
         assertFalse(ids.contains("dolphin-small-int8"))
+        assertFalse(ids.contains("base.en-fp32"))
+        assertFalse(ids.contains("base-fp32"))
+        assertFalse(ids.contains("tiny.en-fp32"))
+        assertFalse(ids.contains("tiny-fp32"))
+        assertFalse(ids.contains("small-fp32"))
+        assertFalse(ids.contains("small.en-fp32"))
         // byActiveId resolves only active ids.
         assertNull(ModelCatalog.byActiveId("english-full"))
         assertNull(ModelCatalog.byActiveId("dolphin-small-fp32"))
+        assertNull(ModelCatalog.byActiveId("base.en-fp32"))
         assertEquals("roman-urdu-int8", ModelCatalog.byActiveId("roman-urdu-int8")?.model?.id)
     }
 

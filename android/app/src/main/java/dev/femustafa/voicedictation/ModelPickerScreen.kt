@@ -142,12 +142,10 @@ private fun ModelRow(
     onDownload: () -> Unit,
 ) {
     val meta = buildString {
-        // No format label: every model here is the same engine family to the user.
-        entry.precision?.let { append(it.label) }
-        if (entry.precision != null) append(" · ")
-        append(entry.model.languageMode.label)
+        // Tech subtext: engine title · precision · size (no format/language jargon).
+        append(entry.modelName)
+        entry.precision?.let { append(" · ${it.label}") }
         if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
-        if (entry.isDefault) append(" · default")
     }
 Row(
             modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
@@ -181,10 +179,3 @@ Row(
         }
     }
 }
-
-private val LanguageMode.label: String
-    get() = when (this) {
-        LanguageMode.Auto -> "Auto-detect"
-        LanguageMode.English -> "English"
-        LanguageMode.RomanUrdu -> "Roman Urdu"
-    }

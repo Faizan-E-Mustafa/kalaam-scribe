@@ -68,6 +68,7 @@ object ModelCatalog {
     const val SHERPA_ONNX_BASE_EN = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base.en/resolve/main"
     const val SHERPA_ONNX_BASE = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-base/resolve/main"
     const val SHERPA_ONNX_SMALL = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small/resolve/main"
+    const val SHERPA_ONNX_SMALL_EN = "https://huggingface.co/csukuangfj/sherpa-onnx-whisper-small.en/resolve/main"
 
     /** Dolphin CTC multilingual model repos (one per size/precision). */
     const val SHERPA_ONNX_DOLPHIN_BASE =
@@ -177,12 +178,17 @@ object ModelCatalog {
      * ONNX (sherpa-onnx) catalog, organized by ONNX model identity, each in two
      * precision tiers. The fileName is the encoder filename for that tier so the
      * app-private path and the WhisperManager file-exists check line up.
+     *
+     * The picker only offers [onnxModelsActive]: English and multilingual models
+     * run their int8 tier, while Roman-Urdu ships both tiers (the fp32 reference
+     * build and the practical int8 one). The English/multilingual fp32 tiers are
+     * [onnxModelsDisabled] — retained in code but never offered.
      */
     val onnxModels: List<CatalogEntry> = listOf(
         // base.en (English) — fp32 + int8
         onnx(
             id = "base.en-fp32",
-            displayName = "English base",
+            displayName = "English · Balanced",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_BASE_EN/base.en-encoder.onnx",
@@ -190,7 +196,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "base.en-int8",
-            displayName = "English base (int8)",
+            displayName = "English · Balanced",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_BASE_EN/base.en-encoder.int8.onnx",
@@ -199,7 +205,7 @@ object ModelCatalog {
         // base (multilingual) — fp32 + int8
         onnx(
             id = "base-fp32",
-            displayName = "Multilingual base",
+            displayName = "Multilingual · Balanced",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_BASE/base-encoder.onnx",
@@ -207,7 +213,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "base-int8",
-            displayName = "Multilingual base (int8)",
+            displayName = "Multilingual · Balanced",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_BASE/base-encoder.int8.onnx",
@@ -216,7 +222,7 @@ object ModelCatalog {
         // tiny.en (English) — fp32 + int8
         onnx(
             id = "tiny.en-fp32",
-            displayName = "English tiny (tiny.en)",
+            displayName = "English · Fast",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_TINY_EN/tiny.en-encoder.onnx",
@@ -224,7 +230,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "tiny.en-int8",
-            displayName = "English tiny (int8)",
+            displayName = "English · Fast",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_TINY_EN/tiny.en-encoder.int8.onnx",
@@ -233,7 +239,7 @@ object ModelCatalog {
         // tiny (multilingual) — fp32 + int8
         onnx(
             id = "tiny-fp32",
-            displayName = "Multilingual tiny",
+            displayName = "Multilingual · Fast",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_TINY/tiny-encoder.onnx",
@@ -241,7 +247,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "tiny-int8",
-            displayName = "Multilingual tiny (int8)",
+            displayName = "Multilingual · Fast",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_TINY/tiny-encoder.int8.onnx",
@@ -250,7 +256,7 @@ object ModelCatalog {
         // small (multilingual) — fp32 + int8
         onnx(
             id = "small-fp32",
-            displayName = "Multilingual small",
+            displayName = "Multilingual · High accuracy",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_SMALL/small-encoder.onnx",
@@ -258,16 +264,33 @@ object ModelCatalog {
         ),
         onnx(
             id = "small-int8",
-            displayName = "Multilingual small (int8)",
+            displayName = "Multilingual · High accuracy",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_SMALL/small-encoder.int8.onnx",
             approxSizeMb = 375,
         ),
+        // small.en (English) — fp32 + int8
+        onnx(
+            id = "small.en-fp32",
+            displayName = "English · High accuracy",
+            languageMode = LanguageMode.English,
+            precision = ModelPrecision.FP32,
+            encoderUrl = "$SHERPA_ONNX_SMALL_EN/small.en-encoder.onnx",
+            approxSizeMb = 969,
+        ),
+        onnx(
+            id = "small.en-int8",
+            displayName = "English · High accuracy",
+            languageMode = LanguageMode.English,
+            precision = ModelPrecision.INT8,
+            encoderUrl = "$SHERPA_ONNX_SMALL_EN/small.en-encoder.int8.onnx",
+            approxSizeMb = 375,
+        ),
         // Roman-Urdu (fine-tune of whisper-small) — fp32 + int8
         onnx(
             id = "roman-urdu-fp32",
-            displayName = "Roman-Urdu (fp32)",
+            displayName = "Roman-Urdu · High accuracy",
             languageMode = LanguageMode.RomanUrdu,
             precision = ModelPrecision.FP32,
             encoderUrl = "$RU_HF/roman-urdu-encoder.onnx",
@@ -275,7 +298,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "roman-urdu-int8",
-            displayName = "Roman-Urdu (int8)",
+            displayName = "Roman-Urdu",
             languageMode = LanguageMode.RomanUrdu,
             precision = ModelPrecision.INT8,
             encoderUrl = "$RU_HF/roman-urdu-encoder.int8.onnx",
@@ -334,19 +357,19 @@ object ModelCatalog {
     val dolphinAttnModels: List<CatalogEntry> = listOf(
         dolphinAttn(
             id = "dolphin-attn-base",
-            displayName = "Dolphin Attn · base",
+            displayName = "Dolphin · Balanced",
             encoderUrl = "$DOLPHIN_ATTN_HF/base/encoder.onnx",
             approxSizeMb = 250,
         ),
         dolphinAttn(
             id = "dolphin-attn-small",
-            displayName = "Dolphin Attn · small",
+            displayName = "Dolphin · High accuracy",
             encoderUrl = "$DOLPHIN_ATTN_HF/small/encoder.onnx",
             approxSizeMb = 699,
         ),
         CatalogEntry(
             model = Model(id = "dolphin-attn-int8-base", fileName = "dolphin-attn-int8-base-encoder.onnx", languageMode = LanguageMode.Auto),
-            displayName = "Dolphin Attn · base (int8)",
+            displayName = "Dolphin · Balanced",
             sourceUrl = null,
             onnxSourceUrl = "$DOLPHIN_ATTN_INT8_HF/base/encoder.onnx",
             approxSizeMb = 263,
@@ -355,7 +378,7 @@ object ModelCatalog {
         ),
         CatalogEntry(
             model = Model(id = "dolphin-attn-int8-small", fileName = "dolphin-attn-int8-small-encoder.onnx", languageMode = LanguageMode.Auto),
-            displayName = "Dolphin Attn · small (int8)",
+            displayName = "Dolphin · High accuracy",
             sourceUrl = null,
             onnxSourceUrl = "$DOLPHIN_ATTN_INT8_HF/small/encoder.onnx",
             approxSizeMb = 748,
@@ -434,13 +457,29 @@ object ModelCatalog {
         get() = ggmlModels.first { it.isDefault }
 
     /**
+     * Whether an ONNX Whisper entry is offered in the picker: English and
+     * multilingual models run their int8 tier; Roman-Urdu ships both tiers.
+     */
+    private fun isEnabledOnnx(entry: CatalogEntry): Boolean =
+        entry.precision != ModelPrecision.FP32 || isRomanUrdu(entry.model.id)
+
+    /** The ONNX entries the picker offers (see [isEnabledOnnx]). */
+    val onnxModelsActive: List<CatalogEntry>
+        get() = onnxModels.filter { isEnabledOnnx(it) }
+
+    /** English/multilingual fp32 tiers — retained in code but never offered. */
+    val onnxModelsDisabled: List<CatalogEntry>
+        get() = onnxModels.filterNot { isEnabledOnnx(it) }
+
+    /**
      * The catalog the picker shows and the app runs: every ONNX-backed model
      * family that is still offered. Disabled families are retained but never
-     * offered: GGML (see [ggmlModels]/[ggmlDefault]) and Dolphin CTC
-     * (see [dolphinCtcModels]). Dolphin attention models stay enabled.
+     * offered: GGML (see [ggmlModels]/[ggmlDefault]), Dolphin CTC
+     * (see [dolphinCtcModels]), and the English/multilingual fp32 tiers
+     * (see [onnxModelsDisabled]). Dolphin attention models stay enabled.
      */
     val activeCatalog: List<CatalogEntry>
-        get() = onnxModels + dolphinAttnModels
+        get() = onnxModelsActive + dolphinAttnModels
 
     /**
      * The app's default model: the Roman-Urdu int8 ONNX conversion, the ONNX
@@ -476,3 +515,19 @@ object ModelCatalog {
     fun isDolphinAttnFileName(fileName: String): Boolean =
         dolphinAttnModels.any { it.model.fileName == fileName }
 }
+
+/**
+ * A technical engine+size name for the picker subtext, e.g. `whisper tiny.en`,
+ * `whisper roman-urdu`, `dolphin base`. Whisper ids carry a `-fp32`/`-int8`
+ * precision suffix that is stripped; Dolphin ids carry an `-attn-`/`-int8-`
+ * infix, so the engine prefix is applied explicitly.
+ */
+val CatalogEntry.modelName: String
+    get() =
+        if (model.id.startsWith("dolphin-attn")) {
+            "dolphin " + model.id
+                .removePrefix("dolphin-attn-int8-")
+                .removePrefix("dolphin-attn-")
+        } else {
+            "whisper " + model.id.removeSuffix("-fp32").removeSuffix("-int8")
+        }
