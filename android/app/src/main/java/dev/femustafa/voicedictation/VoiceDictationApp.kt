@@ -49,31 +49,22 @@ class VoiceDictationApp : Application() {
     val persistedModelId: String?
         get() = prefs.getString(KEY_MODEL_ID, null)
 
-    /** The Model to start with: the persisted user selection if known, else the catalog default. */
+    /** The Model to start with: the persisted user selection if still active, else the ONNX default. */
     fun initialModel(): CatalogEntry =
-        persistedModelId?.let { ModelCatalog.byId(it) } ?: ModelCatalog.default
+        persistedModelId?.let { ModelCatalog.byActiveId(it) } ?: ModelCatalog.onnxDefault
 
     /** Persist the user's chosen Model so it is restored on the next launch. */
     fun setSelectedModelId(id: String) {
         prefs.edit().putString(KEY_MODEL_ID, id).apply()
     }
 
-    /** The user's chosen model-file format (GGML whisper.cpp default), or the default. */
+    /**
+     * The app's model-file format. GGML is disabled — its models and the
+     * whisper.cpp [AarWhisperEngine] backend are retained in code but never
+     * offered — so the app always runs the ONNX (sherpa-onnx) backend.
+     */
     val modelFormat: ModelFormat
-        get() {
-            val stored = prefs.getString(KEY_MODEL_FORMAT, null)
-                ?: return ModelFormat.GGML
-            return try {
-                ModelFormat.valueOf(stored)
-            } catch (_: IllegalArgumentException) {
-                ModelFormat.GGML
-            }
-        }
-
-    /** Persist the chosen model-file format. */
-    fun setModelFormat(format: ModelFormat) {
-        prefs.edit().putString(KEY_MODEL_FORMAT, format.name).apply()
-    }
+        get() = ModelFormat.ONNX
 
     /** The user's chosen transcription mode (batch whole-clip default), or the default. */
     val transcriptionMode: TranscriptionMode
@@ -149,7 +140,6 @@ class VoiceDictationApp : Application() {
         private const val PREFS_NAME = "voice_dictation"
         private const val KEY_LANGUAGE_CODE = "language_code"
         private const val KEY_MODEL_ID = "model_id"
-        private const val KEY_MODEL_FORMAT = "model_format"
         private const val KEY_WHISPER_THREADS = "whisper_threads"
         private const val KEY_TRANSCRIPTION_MODE = "transcription_mode"
         /** Default thread count; auto-select on first run is capped at this value. */

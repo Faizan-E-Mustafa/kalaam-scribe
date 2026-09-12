@@ -15,9 +15,9 @@ import java.io.File
 /**
  * Backs the model picker. Tracks per-model download state (persisted by checking
  * whether the file already exists in app-private storage), the user's selection,
- * the chosen model-file [ModelFormat], and drives [ModelDownloader]. Selection
- * calls [WhisperManager.switchTo] so the resident model and the picker stay
- * consistent.
+ * and drives [ModelDownloader]. Selection calls [WhisperManager.switchTo] so the
+ * resident model and the picker stay consistent. The app is ONNX-only (GGML is
+ * disabled), so the picker always lists [ModelCatalog.activeCatalog].
  */
 class ModelPickerViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -33,17 +33,6 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         get() = getApplication()
 
     private val downloader = ModelDownloader(baseDir)
-
-    /** The currently chosen model-file format (GGML or ONNX), persisted app-wide. */
-    val modelFormat: StateFlow<ModelFormat> =
-        MutableStateFlow(app.modelFormat)
-
-    fun setModelFormat(format: ModelFormat) {
-        app.setModelFormat(format)
-        (modelFormat as MutableStateFlow).value = format
-        _selectedId.value = defaultOrPersistedId()
-        refresh()
-    }
 
     private val _entries = MutableStateFlow(catalogFor(app.modelFormat).map { entry ->
         entry to initialState(entry)
@@ -69,15 +58,13 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
 
     /** The [CatalogEntry]s to show for the current format. */
     private fun catalogFor(format: ModelFormat): List<CatalogEntry> = when (format) {
+        // GGML is disabled (retained in [ModelCatalog.ggmlModels] but never offered).
         ModelFormat.GGML -> ModelCatalog.ggmlModels
         // Dolphin CTC and Dolphin attention models load through ONNX files on phone
         // (sherpa-onnx / onnxruntime-android), so they show up alongside the Whisper
-        // ONNX models when that format is selected.
-        ModelFormat.ONNX -> ModelCatalog.onnxModels + ModelCatalog.dolphinCtcModels + ModelCatalog.dolphinAttnModels
+        // ONNX models.
+        ModelFormat.ONNX -> ModelCatalog.activeCatalog
     }
-
-    /** Whether this model has an ONNX build available (Roman-Urdu does not). */
-    fun hasONNX(entry: CatalogEntry): Boolean = entry.onnxSourceUrl != null
 
     private fun initialState(entry: CatalogEntry): DownloadState =
         if (downloader.isDownloaded(entry, app.modelFormat)) DownloadState.Ready else DownloadState.NotDownloaded
@@ -137,10 +124,9 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
 
     /**
      * The model id to highlight as selected. This must belong to the *current
-     * format's* catalog, since GGML and ONNX are fully separate lists. Prefer the
-     * user's persisted selection when it is in the current catalog and already
-     * downloaded; otherwise fall back to the first downloaded entry, else the
-     * format's default.
+     * catalog*; disabled GGML entries are never selectable. Prefer the user's
+     * persisted selection when it is still active and already downloaded; otherwise
+     * fall back to the first downloaded entry, else the catalog's default.
      */
     private fun defaultOrPersistedId(): String {
         val catalog = catalogFor(app.modelFormat)
@@ -149,13 +135,10 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
             if (persisted != null) add(persisted)
             addAll(catalog)
         }
-        // First downloaded entry, preferring the persisted one; else the format default.
+        // First downloaded entry, preferring the persisted one; else the default.
         val fallbackDefault =
-            if (app.modelFormat == ModelFormat.ONNX) onnxDefault() else ModelCatalog.default
+            if (app.modelFormat == ModelFormat.ONNX) ModelCatalog.onnxDefault else ModelCatalog.ggmlDefault
         return (candidates.firstOrNull { it in catalog && downloader.isDownloaded(it, app.modelFormat) } ?: fallbackDefault)
             .model.id
     }
-
-    /** A sensible ONNX default for the picker's selected highlight. */
-    private fun onnxDefault(): CatalogEntry = ModelCatalog.onnxModels.first { it.model.fileName.endsWith("-encoder.onnx") }
 }

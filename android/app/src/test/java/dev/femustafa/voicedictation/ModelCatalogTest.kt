@@ -118,8 +118,8 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun defaultIsRomanUrduQ4() {
-        val d = ModelCatalog.default
+    fun ggmlDefaultIsRomanUrduQ4() {
+        val d = ModelCatalog.ggmlDefault
         assertEquals("roman-urdu-q4_0", d.model.id)
         assertTrue(d.isDefault)
         assertEquals("ggml-model-q4_0.bin", d.model.fileName)
@@ -127,6 +127,39 @@ class ModelCatalogTest {
         // Default lives on the GGML catalog, not the ONNX one.
         assertTrue(d in ModelCatalog.ggmlModels)
         assertFalse(d in ModelCatalog.onnxModels)
+    }
+
+    @Test
+    fun onnxDefaultIsRomanUrduInt8() {
+        val d = ModelCatalog.onnxDefault
+        assertEquals("roman-urdu-int8", d.model.id)
+        assertEquals(ModelPrecision.INT8, d.precision)
+        assertEquals(LanguageMode.RomanUrdu, d.model.languageMode)
+        // It is an ONNX-family model, so it must be part of the active catalog.
+        assertTrue(d in ModelCatalog.onnxModels)
+        assertTrue(d in ModelCatalog.activeCatalog)
+        // The disabled GGML default is not the app's active one.
+        assertFalse(ModelCatalog.ggmlModels.any { it.model.id == d.model.id })
+    }
+
+    @Test
+    fun activeCatalogIsTheOnnxBackedFamilies() {
+        val ids = ModelCatalog.activeCatalog.map { it.model.id }
+        assertEquals(
+            ModelCatalog.onnxModels.size + ModelCatalog.dolphinCtcModels.size + ModelCatalog.dolphinAttnModels.size,
+            ids.size,
+        )
+        // A representative of every ONNX-backed family is present...
+        assertTrue(ids.contains("roman-urdu-int8"))
+        assertTrue(ids.contains("dolphin-small-int8"))
+        assertTrue(ids.contains("dolphin-attn-small"))
+        // ...and the disabled GGML models are not.
+        assertFalse(ids.contains("roman-urdu-q4_0"))
+        assertFalse(ids.contains("english-full"))
+        assertFalse(ids.contains("multilingual-small-q8"))
+        // byActiveId resolves only active ids.
+        assertNull(ModelCatalog.byActiveId("english-full"))
+        assertEquals("roman-urdu-int8", ModelCatalog.byActiveId("roman-urdu-int8")?.model?.id)
     }
 
     @Test
@@ -190,7 +223,7 @@ class ModelCatalogTest {
             assertTrue(e.sourceUrl!!.endsWith(e.model.fileName))
         }
         // default is the hosted Roman-Urdu q4_0.
-        assertTrue(ModelCatalog.default.sourceUrl != null)
+        assertTrue(ModelCatalog.ggmlDefault.sourceUrl != null)
     }
 
     @Test

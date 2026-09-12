@@ -19,7 +19,9 @@ enum class LanguageMode {
 
 /**
  * The model file format: GGML (whisper.cpp .bin, used by [AarWhisperEngine]) or
- * ONNX (sherpa-onnx .onnx + .tokens, used by [SherpaWhisperEngine]).
+ * ONNX (sherpa-onnx .onnx + .tokens, used by [SherpaWhisperEngine]). GGML is
+ * currently disabled: the app always runs ONNX (see [VoiceDictationApp.modelFormat]),
+ * with the GGML branch retained in code but never offered.
  */
 enum class ModelFormat {
     GGML,

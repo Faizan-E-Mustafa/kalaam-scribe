@@ -17,7 +17,6 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
@@ -47,7 +46,6 @@ fun ModelPickerScreen(
     val selectedId by viewModel.selectedId.collectAsState()
     val loadingId by viewModel.loadingId.collectAsState()
     val languageCode by viewModel.languageCode.collectAsState()
-    val format by viewModel.modelFormat.collectAsState()
 
     Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
         Row(
@@ -57,12 +55,6 @@ fun ModelPickerScreen(
             Text(text = "Models", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             Button(onClick = onClose) { Text("Done") }
         }
-        // App-level model-file format: GGML (whisper.cpp) or ONNX (sherpa-onnx).
-        FormatSelector(
-            format = format,
-            onSelect = viewModel::setModelFormat,
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-        )
         // App-level language setting: chosen once, persisted, applied to
         // multilingual Models when transcribing.
         LanguagePicker(
@@ -78,43 +70,12 @@ fun ModelPickerScreen(
                 ModelRow(
                     entry = entry,
                     dlState = dlState,
-                    format = format,
                     selected = entry.model.id == selectedId,
                     loading = entry.model.id == loadingId,
                     onSelect = { onSelect(entry) },
                     onDownload = { onDownload(entry) },
                 )
                 HorizontalDivider()
-            }
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun FormatSelector(
-    format: ModelFormat,
-    onSelect: (ModelFormat) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(text = "Format", style = MaterialTheme.typography.bodyLarge)
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ModelFormat.entries.forEach { candidate ->
-                val selected = candidate == format
-                val label = if (selected) "${candidate.name} ✓" else candidate.name
-                if (selected) {
-                    Button(onClick = { onSelect(candidate) }, modifier = Modifier.weight(1f)) {
-                        Text(label)
-                    }
-                } else {
-                    OutlinedButton(onClick = { onSelect(candidate) }, modifier = Modifier.weight(1f)) {
-                        Text(label)
-                    }
-                }
             }
         }
     }
@@ -175,16 +136,15 @@ private fun LanguagePicker(
 private fun ModelRow(
     entry: CatalogEntry,
     dlState: ModelPickerViewModel.DownloadState,
-    format: ModelFormat,
     selected: Boolean,
     loading: Boolean,
     onSelect: () -> Unit,
     onDownload: () -> Unit,
 ) {
     val meta = buildString {
-        append(format.name)
-        entry.precision?.let { append(" · ${it.label}") }
-        append(" · ")
+        // No format label: every model here is the same engine family to the user.
+        entry.precision?.let { append(it.label) }
+        if (entry.precision != null) append(" · ")
         append(entry.model.languageMode.label)
         if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
         if (entry.isDefault) append(" · default")

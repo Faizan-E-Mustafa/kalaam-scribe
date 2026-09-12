@@ -423,13 +423,35 @@ object ModelCatalog {
         )
     }
 
-    /** The default GGML Model (Roman-Urdu q4_0, the spec default). */
-    val default: CatalogEntry
+    /**
+     * The GGML catalog's default (Roman-Urdu q4_0, the spec default). GGML models
+     * are currently disabled — retained in code but never offered to the user —
+     * so this is not what the app starts with (see [onnxDefault]).
+     */
+    val ggmlDefault: CatalogEntry
         get() = ggmlModels.first { it.isDefault }
+
+    /**
+     * The catalog the picker shows and the app runs: every ONNX-backed model
+     * family. GGML models are disabled but retained (see [ggmlModels]/[ggmlDefault]).
+     */
+    val activeCatalog: List<CatalogEntry>
+        get() = onnxModels + dolphinCtcModels + dolphinAttnModels
+
+    /**
+     * The app's default model: the Roman-Urdu int8 ONNX conversion, the ONNX
+     * successor of the disabled GGML default (`roman-urdu-q4_0`). Quantized for a
+     * reasonable size while keeping accurate Urdu dictation.
+     */
+    val onnxDefault: CatalogEntry
+        get() = byActiveId("roman-urdu-int8") ?: error("roman-urdu-int8 must resolve")
 
     /** Look up by model id across all four catalogs. */
     fun byId(id: String): CatalogEntry? =
         (ggmlModels + onnxModels + dolphinCtcModels + dolphinAttnModels).firstOrNull { it.model.id == id }
+
+    /** Look up an active (ONNX-backed) catalog entry by id, or null. */
+    fun byActiveId(id: String): CatalogEntry? = activeCatalog.firstOrNull { it.model.id == id }
 
     /** Whether [entry] is a Dolphin CTC model (loaded by [DolphinCtcEngine]). */
     fun isDolphinCtc(entry: CatalogEntry): Boolean =
