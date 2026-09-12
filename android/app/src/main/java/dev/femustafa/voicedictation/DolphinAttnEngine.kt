@@ -17,6 +17,7 @@ import java.io.FileNotFoundException
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.FloatBuffer
 import java.nio.ShortBuffer
 import kotlin.math.exp
 import kotlin.math.ln
@@ -41,8 +42,9 @@ import kotlin.math.min
  * an abnormally high probability right after the prefix, so without length
  * normalization it returns an empty/truncated transcript. Layer count and head/dim
  * are derived from the encoder output at load time (base: 6 layers; small: 12 layers),
- * never hardcoded. The fp16/arm tier keeps the whole KV cache in float16, so the cache
- * dtype is fixed to fp16 (fp32 fp32 tiers would degrade to fp16 here).
+ * never hardcoded. The KV cache dtype is derived from the encoder output at load time
+ * (FLOAT16 for the fp16/arm tier, FLOAT for the fp32-derived int8 tier), then shared
+ * across prefill and each decode step.
  *
  * Vocabulary: `units.txt` id→symbol list; decode is SentencePiece `DecodePieces`
  * (leading `▁` → space, concatenate, trim leading space) without needing `bpe.model`.
@@ -73,20 +75,20 @@ open class DolphinAttnEngine(
     /**
      * A beach contains a partial hypothesis: the token ids decoded so far (including
      * the 5-token `<sos><ur><PK><asr><nots>` prefix), its cumulative log-prob, and the
-     * fp16 decoder KV cache (state AFTER processing all but the last token — the next
-     * decode step consumes exactly one more). Sharing the lists across siblings is fine:
-     * they are treated as immutable.
+     * decoder KV cache (ShortBuffer for fp16 / FloatBuffer for fp32 tiers; state AFTER
+     * processing all but the last token — the next decode step consumes exactly one
+     * more). Sharing the lists across siblings is fine: they are treated as immutable.
      */
     private class Beam(
         val tokens: IntArray,
         val score: Double,
-        val deKeys: List<ShortBuffer>,
-        val deValues: List<ShortBuffer>,
+        val deKeys: List<Any>,
+        val deValues: List<Any>,
     ) {
         /** A new beam extending this one with [token], appending its log-prob and
          * advancing to the decoder KV state returned by the step that produced [token]. */
-        fun extend(token: Int, logProb: Double, deKeys: List<ShortBuffer>,
-                   deValues: List<ShortBuffer>): Beam =
+        fun extend(token: Int, logProb: Double, deKeys: List<Any>,
+                   deValues: List<Any>): Beam =
             Beam(tokens + token, score + logProb, deKeys, deValues)
     }
 
@@ -99,6 +101,8 @@ open class DolphinAttnEngine(
         val nl: Int,
         val headDim: Int,
         val dModel: Int,
+        /** KV cache dtype derived from the encoder output at load time. */
+        val kvDtype: OnnxJavaType,
         /** Load-cached constant decoder inputs, reused across every step's run. */
         val langStartTensor: OnnxTensor?,
         val langEndTensor: OnnxTensor?,
@@ -113,8 +117,8 @@ open class DolphinAttnEngine(
 
     /** A single decoder run: fresh KV state + the raw full-logits row. */
     private class DecodeResult(
-        val deKeys: List<ShortBuffer>,
-        val deValues: List<ShortBuffer>,
+        val deKeys: List<Any>,
+        val deValues: List<Any>,
         val fullLogits: FloatArray,
     )
 
@@ -161,7 +165,9 @@ open class DolphinAttnEngine(
         val keyShape = (encOutputs.getValue("en_key_0").info as TensorInfo).shape
         val headDim = keyShape[0].toInt()
         val dModel = keyShape[1].toInt()
-        Log.i(TAG, "Dolphin attention arch: nl=$nl headDim=$headDim dModel=$dModel")
+
+        val kvDtype = (encOutputs.getValue("en_key_0").info as TensorInfo).type
+        Log.i(TAG, "Dolphin attention arch: nl=$nl headDim=$headDim dModel=$dModel kvDtype=$kvDtype")
         Log.i(TAG, "decoder outputs: ${decoder.getOutputInfo().keys.sorted()}")
         Log.i(TAG, "encoder outputs: ${encoder.getOutputInfo().keys.sorted()}")
         Log.i(TAG, "decoder inputs: " + decoder.getInputInfo().map { (name, node) ->
@@ -213,6 +219,7 @@ open class DolphinAttnEngine(
 
         return DolphinAttnModelRef(
             env, encoder, decoder, tokenList, nl, headDim, dModel,
+            kvDtype = kvDtype,
             langStartTensor = OnnxTensor.createTensor(
                 env, toDirectLongBuffer(intArrayOf(LANG_UR)), longArrayOf(1)
             ),
@@ -365,11 +372,12 @@ open class DolphinAttnEngine(
 
             // Prefill with an empty decoder cache; the decoder consumes all 5 prefix
             // tokens at once and returns the KV for them + the full logits of the last.
-            val emptyKeys = (0 until ref.nl).map { EMPTY_BUFFER }
-            val emptyValues = (0 until ref.nl).map { EMPTY_BUFFER }
+            val emptyKeys = (0 until ref.nl).map { emptyKvBuffer(ref.kvDtype) }
+            val emptyValues = (0 until ref.nl).map { emptyKvBuffer(ref.kvDtype) }
             val pre = runDecoder(ref, enKeys, enValues, prefix, 0, emptyKeys, emptyValues)
-            Log.i(TAG, "prefill kv[0] remaining=${pre.deKeys[0].remaining()} " +
-                "h=${pre.deKeys[0].remaining() / (ref.headDim * ref.dModel)}")
+            val firstKey = pre.deKeys[0] as? ShortBuffer ?: (pre.deKeys[0] as FloatBuffer)
+            Log.i(TAG, "prefill kv[0] remaining=${firstKey.remaining()} " +
+                "h=${firstKey.remaining() / (ref.headDim * ref.dModel)}")
             val preLogProbs = logSoftmax(pre.fullLogits)
 
             val beamSize = VoiceDictationApp.from(context).dolphinBeamSize()
@@ -438,10 +446,11 @@ open class DolphinAttnEngine(
     }
 
     /**
-     * One decoder forward: given the fp16 cached decoder KV (all tokens except the last
-     * of [inputIds]) and the encoder cross KV, decode [inputIds] (the prefill passes all
-     * prefix tokens at once; streaming steps pass exactly one) and return the fresh
-     * decoder KV + the full-logits row for the last position.
+     * One decoder forward: given the cached decoder KV (dtype derived from the model,
+     * all tokens except the last of [inputIds]) and the encoder cross KV, decode
+     * [inputIds] (the prefill passes all prefix tokens at once; streaming steps pass
+     * exactly one) and return the fresh decoder KV + the full-logits row for the last
+     * position.
      */
     private fun runDecoder(
         ref: DolphinAttnModelRef,
@@ -449,8 +458,8 @@ open class DolphinAttnEngine(
         enValues: List<OnnxTensor>,
         inputIds: IntArray,
         historyLen: Int,
-        deKeys: List<ShortBuffer>,
-        deValues: List<ShortBuffer>,
+        deKeys: List<Any>,
+        deValues: List<Any>,
     ): DecodeResult {
         val env = ref.env!!
         val n = ref.nl
@@ -459,17 +468,11 @@ open class DolphinAttnEngine(
         val owned = mutableListOf<OnnxTensor>()
         try {
             for (i in 0 until n) {
-                // remaining() is the TOTAL fp16 element count (head*dModel*historyLen);
-                // fold it back to historyLen for the [head,dModel,h]/[head,h,dModel] feeds.
-                val h = deKeys[i].remaining() / (ref.headDim * ref.dModel)
-                val keyShape = longArrayOf(ref.headDim.toLong(), ref.dModel.toLong(), h.toLong())
-                val valShape = longArrayOf(ref.headDim.toLong(), h.toLong(), ref.dModel.toLong())
-                owned.add(OnnxTensor.createTensor(
-                    env, deKeys[i].duplicate(), keyShape, OnnxJavaType.FLOAT16
-                ).also { inputs["in_de_key_$i"] = it })
-                owned.add(OnnxTensor.createTensor(
-                    env, deValues[i].duplicate(), valShape, OnnxJavaType.FLOAT16
-                ).also { inputs["in_de_value_$i"] = it })
+                // Create the key/value input tensors from the cached buffers, sized by
+                // their dtype (ShortBuffer for fp16, FloatBuffer for fp32 tiers).
+                val (kTensor, vTensor) = kvInputTensors(env, deKeys[i], deValues[i], ref)
+                owned.add(kTensor.also { inputs["in_de_key_$i"] = it })
+                owned.add(vTensor.also { inputs["in_de_value_$i"] = it })
                 inputs["en_key_$i"] = enKeys[i]
                 inputs["en_value_$i"] = enValues[i]
             }
@@ -490,17 +493,61 @@ open class DolphinAttnEngine(
 
             val result = ref.decoder!!.run(inputs)
             try {
-                val keys = (0 until n).map { result.tensor("out_de_key_$it").getShortBuffer() }
-                val values = (0 until n).map { result.tensor("out_de_value_$it").getShortBuffer() }
+                val keys = (0 until n).map { result.tensor("out_de_key_$it") }
+                val values = (0 until n).map { result.tensor("out_de_value_$it") }
                 val logits = result.tensor(OUTPUT_LOGITS).getFloatBuffer()
                 val row = FloatArray(logits.remaining())
                 logits.get(row)
-                return DecodeResult(keys, values, row)
+                val dk = keys.map { kb ->
+                    if (ref.kvDtype == OnnxJavaType.FLOAT16) kb.getShortBuffer()
+                    else kb.getFloatBuffer()
+                }
+                val dv = values.map { vb ->
+                    if (ref.kvDtype == OnnxJavaType.FLOAT16) vb.getShortBuffer()
+                    else vb.getFloatBuffer()
+                }
+                return DecodeResult(dk, dv, row)
             } finally {
                 result.close()
             }
         } finally {
             owned.forEach { try { it.close() } catch (_: Exception) {} }
+        }
+    }
+
+    /**
+     * Build the key/value input tensors for one decoder layer from the cached KV
+     * buffers. The cache dtype (from [DolphinAttnModelRef.kvDtype]) selects the
+     * buffer element type: ShortBuffer for FLOAT16, FloatBuffer for FLOAT (fp32)
+     * tiers. `remaining()` is the TOTAL element count (head*dModel*historyLen);
+     * fold it back to historyLen for the [head,dModel,h]/[head,h,dModel] feeds.
+     */
+    private fun kvInputTensors(
+        env: OrtEnvironment,
+        key: Any,
+        value: Any,
+        ref: DolphinAttnModelRef,
+    ): Pair<OnnxTensor, OnnxTensor> {
+        val head = ref.headDim.toLong()
+        val dim = ref.dModel.toLong()
+        return when (ref.kvDtype) {
+            OnnxJavaType.FLOAT16 -> {
+                val kb = key as ShortBuffer
+                val vb = value as ShortBuffer
+                val h = kb.remaining() / (ref.headDim * ref.dModel)
+                OnnxTensor.createTensor(env, kb.duplicate(), longArrayOf(head, dim, h.toLong()), OnnxJavaType.FLOAT16) to
+                    OnnxTensor.createTensor(env, vb.duplicate(), longArrayOf(head, h.toLong(), dim), OnnxJavaType.FLOAT16)
+            }
+            OnnxJavaType.FLOAT -> {
+                val kb = key as FloatBuffer
+                val vb = value as FloatBuffer
+                val h = kb.remaining() / (ref.headDim * ref.dModel)
+                // FLOAT tensors are built from a FloatBuffer with the 3-arg overload
+                // (no explicit type variant exists for float32 buffers).
+                OnnxTensor.createTensor(env, kb.duplicate(), longArrayOf(head, dim, h.toLong())) to
+                    OnnxTensor.createTensor(env, vb.duplicate(), longArrayOf(head, h.toLong(), dim))
+            }
+            else -> throw IllegalStateException("Unsupported KV dtype: ${ref.kvDtype}")
         }
     }
 
@@ -641,9 +688,22 @@ open class DolphinAttnEngine(
         /** SentencePiece metasymbol for a leading space (U+2581). */
         const val META = "\u2581"
 
-        /** Born with a zero capacity; reused for the empty decoder KV prefill. */
-        private val EMPTY_BUFFER: ShortBuffer =
+        /**
+         * The empty decoder KV cache for the prefill, typed to match the KV cache
+         * dtype: ShortBuffer (fp16 tier) or FloatBuffer (fp32/int8 tier).
+         */
+        private fun emptyKvBuffer(dtype: OnnxJavaType): Any = when (dtype) {
+            OnnxJavaType.FLOAT16 -> EMPTY_SHORT_BUFFER
+            OnnxJavaType.FLOAT -> EMPTY_FLOAT_BUFFER
+            else -> throw IllegalStateException("Unsupported KV dtype: $dtype")
+        }
+
+        /** Born with a zero capacity; reused for the fp16 empty decoder KV prefill. */
+        private val EMPTY_SHORT_BUFFER: ShortBuffer =
             ByteBuffer.allocateDirect(0).order(ByteOrder.nativeOrder()).asShortBuffer()
+
+        /** Born with a zero capacity; reused for the fp32/int8 empty decoder KV prefill. */
+        private val EMPTY_FLOAT_BUFFER: FloatBuffer = FloatBuffer.allocate(0)
     }
 }
 

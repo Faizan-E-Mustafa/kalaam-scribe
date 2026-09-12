@@ -111,8 +111,13 @@ internal open class DolphinAttnSession(
     private val worker: Job = scope.launch {
         Log.i(TAG, "decode worker started")
         for (segment in segments) {
-            val text = decodeSegment(segment)
-            if (text.isNotBlank()) {
+            val text = try {
+                decodeSegment(segment)
+            } catch (e: Throwable) {
+                Log.e(TAG, "decode worker: segment decode failed", e)
+                null
+            }
+            if (text?.isNotBlank() == true) {
                 decodedTexts += text
                 // Best-effort UI delivery (the authoritative text is decodedTexts, which
                 // flush reads after joining the worker). Emitting during flush is fine —

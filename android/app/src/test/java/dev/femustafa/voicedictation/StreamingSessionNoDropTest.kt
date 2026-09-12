@@ -1,5 +1,6 @@
 package dev.femustafa.voicedictation
 
+import ai.onnxruntime.OnnxJavaType
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
@@ -98,7 +99,7 @@ class StreamingSessionNoDropTest {
     /** Reusable fake model ref (nullable fields are fine — our fake decoder ignores it). */
     private class FakeModelRef : DolphinAttnEngine.DolphinAttnModelRef(
         env = null, encoder = null, decoder = null, tokenList = emptyList(),
-        nl = 0, headDim = 64, dModel = 512,
+        nl = 0, headDim = 64, dModel = 512, kvDtype = OnnxJavaType.FLOAT16,
         langStartTensor = null, langEndTensor = null, maskTensor = null, vad = null,
     )
 

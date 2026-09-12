@@ -68,15 +68,22 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun dolphinAttnCatalogHasBaseAndSmallFp16Encoders() {
-        // 2 Dolphin attention sizes (base, small), fp16/arm tier only.
-        assertEquals(2, ModelCatalog.dolphinAttnModels.size)
+    fun dolphinAttnCatalogHasBaseAndSmallInFp16AndInt8Tiers() {
+        // 4 Dolphin attention entries: base fp16, small fp16, int8-base, int8-small.
+        assertEquals(4, ModelCatalog.dolphinAttnModels.size)
         val ids = ModelCatalog.dolphinAttnModels.map { it.model.id }
-        assertTrue(ids.contains("dolphin-attn-base"))
-        assertTrue(ids.contains("dolphin-attn-small"))
+        for (id in listOf(
+            "dolphin-attn-base", "dolphin-attn-small",
+            "dolphin-attn-int8-base", "dolphin-attn-int8-small",
+        )) {
+            assertTrue("missing $id", ids.contains(id))
+        }
+        // fp16/arm entries are the first two; int8 entries follow.
+        assertEquals(ModelPrecision.FP16, ModelCatalog.dolphinAttnModels[0].precision)
+        assertEquals(ModelPrecision.FP16, ModelCatalog.dolphinAttnModels[1].precision)
+        assertEquals(ModelPrecision.INT8, ModelCatalog.dolphinAttnModels[2].precision)
+        assertEquals(ModelPrecision.INT8, ModelCatalog.dolphinAttnModels[3].precision)
         for (e in ModelCatalog.dolphinAttnModels) {
-            // fp16/arm only (the verifier covered the kill-question "which tier ships").
-            assertEquals(ModelPrecision.FP16, e.precision)
             // Language-mode Auto: the decoder pins ur/PK tokens itself.
             assertEquals(LanguageMode.Auto, e.model.languageMode)
             assertTrue(e.model.canOverrideLanguage)
@@ -84,13 +91,18 @@ class ModelCatalogTest {
             assertTrue(e.model.fileName.endsWith("-encoder.onnx"))
             // The decoder URL is its sibling alongside the encoder.
             assertEquals("${e.model.id}-decoder.onnx", ModelDownloader.dolphinAttnDecoderName(e))
-            val size = e.model.id.removePrefix("dolphin-attn-")
-            assertEquals("${ModelCatalog.RU_HF}/dolphin-attn/$size/decoder.onnx",
+            // The base path and size dir differ between the fp16 and int8 tiers.
+            val (hall, sizeDir, expectedBase) = if (e.precision == ModelPrecision.FP16) {
+                Triple(ModelCatalog.DOLPHIN_ATTN_HF, e.model.id.removePrefix("dolphin-attn-"),
+                    "${ModelCatalog.RU_HF}/dolphin-attn")
+            } else {
+                Triple(ModelCatalog.DOLPHIN_ATTN_INT8_HF, e.model.id.removePrefix("dolphin-attn-int8-"),
+                    "${ModelCatalog.RU_HF}/dolphin-attn-int8")
+            }
+            assertEquals("$expectedBase/$sizeDir/decoder.onnx",
                 e.onnxSourceUrl!!.substringBefore("/encoder.onnx") + "/decoder.onnx")
-            // A sibling units.txt URL one directory up.
-            assertTrue(e.onnxSourceUrl!!.startsWith(ModelCatalog.DOLPHIN_ATTN_HF))
-            // ONNX-hosted, no GGML source.
-            assertNull(e.sourceUrl)
+            // Hosted in the tier's own top-level HF directory.
+            assertTrue("int8 URLs must live under $hall", e.onnxSourceUrl!!.startsWith(hall))
         }
     }
 
