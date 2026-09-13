@@ -2,10 +2,14 @@ package dev.femustafa.voicedictation
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.Button
@@ -53,7 +57,7 @@ fun ModelPickerScreen(
         if (code == null) state else state.filter { (entry, _) -> entry.supportsLanguage(code) }
     }
 
-    Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
+    Column(modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -71,6 +75,10 @@ fun ModelPickerScreen(
         LazyColumn(
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
+            // Keep the last row off the screen edge (edge-to-edge: the window bottom
+            // is flush with the gesture/nav bar, so insets alone may report 0 on some
+            // devices and the final model row gets cut off).
+            contentPadding = PaddingValues(bottom = 16.dp),
         ) {
             items(visible, key = { it.first.model.id }) { (entry, dlState) ->
                 ModelRow(
