@@ -111,6 +111,33 @@ uv sync && uv run validate_stt.py
 └── README.md                 # This file
 ```
 
+## Dependencies
+
+**Python (Linux development harness)**:
+- `av` — audio/video processing
+- `faster-whisper` — Whisper inference engine
+- `librosa` — audio analysis
+- `soundfile` — audio file I/O
+- `torch` — tensor computation
+- `transformers` — HuggingFace transformers
+
+**Android**:
+- `whisper-android` — whisper.cpp AAR
+- `onnxruntime-android` — ONNX inference
+- `sherpa-onnx` — Serger ASR engine
+- `jlayer` — MP3 decoder
+
+## Model Sources
+
+Models are hosted on HuggingFace:
+
+| Model | Repository |
+|-------|------------|
+| Roman-Urdu (default) | [`femustafa/voicedictation-models`](https://huggingface.co/femustafa/voicedictation-models) |
+| Dolphin ONNX (Urdu) | [`onnx-community/dataocean-dolphin-asr`](https://huggingface.co/onnx-community/dataocean-dolphin-asr) |
+| Whisper base models | [`ggerganov/whisper.cpp`](https://huggingface.co/ggerganov/whisper.cpp) |
+| Urdu fine-tunes | [`cheetos18/whisper-small-roman-urdu`](https://huggingface.co/cheetos18/whisper-small-roman-urdu), [`kingabzpro/whisper-base-urdu-full`](https://huggingface.co/kingabzpro/whisper-base-urdu-full), [`Qasimhassan65/whisper-small-urdu`](https://huggingface.co/Qasimhassan65/whisper-small-urdu) |
+
 ## License
 
-This is a learning project. No license file yet.
+Apache License 2.0. See [`LICENSE`](LICENSE) for details.
