@@ -309,8 +309,11 @@ open class DolphinAttnEngine(
      *  1. Run the encoder (raw int16 in-graph) -> fp16 cross KV.
      *  2. Prefill `<sos><ur><PK><asr><nots>`.
      *  3. Loop: move EOS-terminated beams to `finished`; expand the rest by the top-k
-     *     tokens of the full-logits log-softmax; keep the best [BEAM_SIZE] by cumulative
+     *     tokens of the full-logits log-softmax; keep the best [beamSize] by cumulative
      *     score. Each decode passes exactly one new token with the parent's lazy KV.
+     *     The loop ends only when every beam has EOS'd (or [maxLen] is hit) — it never
+     *     hard-stops on the top-ranked beam, so a stray early `<eos>` can't drop the
+     *     trailing sentences (ticket 29 EOS-bias; matches the verifier).
      *  4. Pick the finished hypothesis with the best LENGTH-NORMALIZED score
      *     (score / #generated tokens), dropping prefix-only empties.
      */
@@ -378,9 +381,6 @@ open class DolphinAttnEngine(
                 }
                 candidates.sortByDescending { it.score }
                 beams = candidates.take(beamSize)
-                // Hard-stop once the best-ranked beam has finished. With greedy this is the
-                // natural decode end; it also short-circuits degenerate no-EOS loops.
-                if (beams.first().tokens.last() == EOS) break
             }
             val decodeMs = SystemClock.elapsedRealtime() - t0
             Log.i(TAG, "beam search done: steps=${finished.size + 0}, runs=$runs, " +
@@ -633,7 +633,6 @@ open class DolphinAttnEngine(
         /** Full-logits output name added by `add_logits_output.py` graph surgery. */
         const val OUTPUT_LOGITS = "/output_layer/Gemm_output_0"
 
-        private const val BEAM_SIZE = 1
         private const val MAX_LEN = 60
 
         const val SAMPLE_RATE = 16000

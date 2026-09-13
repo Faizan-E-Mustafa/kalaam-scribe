@@ -114,7 +114,13 @@ fun SettingsScreen(
         SectionHeader(text = "Dolphin Beam Size")
         CompactSlider(
             "Beam", beamSize, { beamSize = it }, 1f..5f, "%.0f".format(beamSize), steps = 3,
-            modifier = Modifier.alpha(if (streamingActive) 1f else 0.4f),
+        )
+        Text(
+            text = "Dolphin attention models — applies to both batch and streaming. " +
+                "A higher beam avoids dropping the last sentence on long/multi-sentence " +
+                "clips, at the cost of more decoding.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
 
         Spacer(modifier = Modifier.height(16.dp))
