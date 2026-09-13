@@ -8,6 +8,7 @@ lifecycle = "2.8.7"
 whisper = "1.0.0"
 sherpaOnnx = "1.13.4"
 onnxruntime = "1.27.0"
+jlayer = "1.0.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -23,6 +24,8 @@ androidx-material3 = { group = "androidx.compose.material3", name = "material3" 
 androidx-material-icons = { group = "androidx.compose.material", name = "material-icons-extended" }
 whisper-android = { group = "dev.ffmpegkit-maintained", name = "whisper-android", version.ref = "whisper" }
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
+# Pure-Java MP3 decoder (LGPL) used by AudioDecoder to transcribe .mp3 uploads.
+jlayer = { group = "javazoom", name = "jlayer", version.ref = "jlayer" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

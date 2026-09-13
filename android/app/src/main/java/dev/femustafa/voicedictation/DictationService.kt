@@ -5,8 +5,6 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
-import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
@@ -187,7 +185,7 @@ class DictationService : Service() {
                 if (trimmed.isEmpty()) {
                     app.setError("No speech detected — please try again")
                 } else {
-                    copyToClipboard(trimmed)
+                    app.copyToClipboard(trimmed)
                     val modelId = whisper.currentModel?.id ?: "unknown"
                     app.appendHistory(
                         DictationHistoryItem(
@@ -206,11 +204,6 @@ class DictationService : Service() {
             }
             stopSelf()
         }
-    }
-
-    private fun copyToClipboard(text: String) {
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        clipboard.setPrimaryClip(ClipData.newPlainText("dictation", text))
     }
 
     private fun notifyCopied(text: String) {

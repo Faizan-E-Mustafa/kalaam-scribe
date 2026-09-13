@@ -57,6 +57,8 @@ import androidx.core.content.ContextCompat
  * big transcript card with Copy/Share, live waveform + chip while recording,
  * and a short history list. Keeps the same permission gating as before.
  */
+private val AUDIO_MIME_TYPES = arrayOf("audio/wav", "audio/x-wav", "audio/mpeg")
+
 @Composable
 fun DictationScreen(
     viewModel: DictationViewModel,
@@ -80,6 +82,11 @@ fun DictationScreen(
     val notifLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { }
+
+    // System file picker for transcribing a WAV/MP3 file with the resident model.
+    val fileLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri -> if (uri != null) viewModel.transcribeFile(uri) }
 
     fun maybeRequestNotifications() {
         if (Build.VERSION.SDK_INT >= 33 &&
@@ -175,7 +182,7 @@ fun DictationScreen(
             ) {
                 Text(if (recording) "■ Stop" else "● Record")
             }
-            FilledTonalButton(onClick = onOpenPicker) { Text("Models") }
+            FilledTonalButton(onClick = { fileLauncher.launch(AUDIO_MIME_TYPES) }) { Text("Load file") }
         }
 
         // Transcript card

@@ -1,6 +1,8 @@
 package dev.femustafa.voicedictation
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -142,6 +144,12 @@ class VoiceDictationApp : Application() {
 
     fun appendHistory(item: DictationHistoryItem) {
         _history.value = (listOf(item) + _history.value).take(10)
+    }
+
+    /** Copy [text] to the system clipboard (shared by dictation and file transcription). */
+    fun copyToClipboard(text: String) {
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        clipboard.setPrimaryClip(ClipData.newPlainText("dictation", text))
     }
 
     companion object {

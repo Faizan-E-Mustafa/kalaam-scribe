@@ -95,6 +95,9 @@ dependencies {
 
     implementation(libs.whisper.android)
 
+    // Pure-Java MP3 decoder for the file-upload transcription path.
+    implementation(libs.jlayer)
+
     debugImplementation(libs.androidx.ui.tooling)
 
     testImplementation("junit:junit:4.13.2")
