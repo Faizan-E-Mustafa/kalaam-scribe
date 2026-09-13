@@ -531,11 +531,12 @@ object ModelCatalog {
      * The catalog the picker shows and the app runs: every ONNX-backed model
      * family that is still offered. Disabled families are retained but never
      * offered: GGML (see [ggmlModels]/[ggmlDefault]), Dolphin CTC
-     * (see [dolphinCtcModels]), and the English/multilingual fp32 tiers
-     * (see [onnxModelsDisabled]). Dolphin attention and Omnilingual stay enabled.
+     * (see [dolphinCtcModels]), Omnilingual (see [omnilingualModels]), and the
+     * English/multilingual fp32 tiers (see [onnxModelsDisabled]). Dolphin attention
+     * models stay enabled.
      */
     val activeCatalog: List<CatalogEntry>
-        get() = onnxModelsActive + omnilingualModels + dolphinAttnModels
+        get() = onnxModelsActive + dolphinAttnModels
 
     /**
      * The app's default model: the Roman-Urdu int8 ONNX conversion, the ONNX
