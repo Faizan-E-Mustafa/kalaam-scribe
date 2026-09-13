@@ -13,7 +13,7 @@ today's stop-then-transcribe path.
 this ticket reuses `segmentAudioWithVad`/`SherpaVad` and the resident-VAD wiring). Builds on
 21/22 (sherpa integration + sherpa VAD notes). Not blocked by anything else.
 
-**Status:** ready-for-human (implementation + JVM tests done; final on-device A50
+**Status:** ready-for-human (implementation + JVM tests done; final on-device the phone
 verification below is a human step)
 
 ## Decisions (2026-09-05, before implementation)
@@ -36,7 +36,7 @@ verification below is a human step)
   This mirrors ticket 30's VAD usage scaled to live.
 - **`maxSpeechDuration = 5.0s` stays** — it becomes the live phrase splitter. Flagged as an
   open item (below): raising it lengthens live phrases but raises the per-utterance decode
-  ceiling on the A50.
+  ceiling on the phone.
 - **Session lifetime:** the session borrows the resident model for the whole recording; it is
   created at recording start (after the model is guaranteed resident) and finalized at Stop.
   Indivisible with `switchTo`/`shutdown` during a recording (not reachable in the UI).
@@ -48,7 +48,7 @@ verification below is a human step)
 ## Scope callout (set expectations)
 
 - Text appears **sentence-by-sentence** as you pause, not word-by-word. Each phrase costs its
-  normal decode (~1–1.5 s on the A50 for a few tokens) after VAD closes it — perceived
+  normal decode (~1–1.5 s on the phone for a few tokens) after VAD closes it — perceived
   latency ~ one phrase's decode, instead of everything at Stop.
 - Same weights, same decoder → **final text is identical to today's** (VAD segmentation +
   join). This is a UX/latency change, not an accuracy change.
@@ -79,7 +79,7 @@ verification below is a human step)
   non-streaming engine. `:app:testDebugUnitTest` stays green (**53 tests today**, incl. the
   new 4-case `StreamingSessionNoDropTest`); `assembleDebug` builds; `lintDebug` adds no new
   errors (the pre-existing `AudioRecorder.kt:45` MissingPermission stays).
-- [ ] On-device (A50): dictating a multi-phrase clip shows partials appearing per phrase while
+- [ ] On-device (the phone): dictating a multi-phrase clip shows partials appearing per phrase while
   recording; Stop's final text equals the ticket-30 batch result for the same audio; log the
   per-phrase publish latency. **(pending — human/device step)**
 
@@ -153,7 +153,7 @@ verification below is a human step)
 ## Open items to confirm during implementation
 
 1. **`maxSpeechDuration`:** keep 5.0 s (live phrase cap) vs raise (longer phrases, higher
-   per-utterance decode ceiling). Verify per-phrase publish latency on the A50; tune there.
+   per-utterance decode ceiling). Verify per-phrase publish latency on the phone; tune there.
    *(Still open — tune on-device.)*
 2. **Segment queue bound — RESOLVED (2026-09-06):** unbounded. The original plan assumed a
    bounded queue with back-pressure; on-device observation showed the live decode worker
@@ -173,7 +173,7 @@ verification below is a human step)
   slow worker, tail preserved); **53 tests, all green**.
 - **Build:** `./gradlew :app:assembleDebug` and `:app:testDebugUnitTest`; `lintDebug` no new
   errors (the pre-existing `AudioRecorder.kt:45` MissingPermission stays).
-- **On-device A50:** multi-phrase Urdu dictation — confirm partials appear per phrase while
+- **On-device the phone:** multi-phrase Urdu dictation — confirm partials appear per phrase while
   recording, Stop final equals ticket-30 batch output for the same clip, and log
   per-phrase publish latency.
 
@@ -222,5 +222,5 @@ verification below is a human step)
   - **Tests:** `StreamingSessionNoDropTest` (4 cases) pushes 7/8 segments (> the old bound)
     through live + tail paths and asserts none are dropped; stable across repeated runs.
     Full `:app:testDebugUnitTest` passes (53 tests). `lintDebug` unchanged.
-  - **Remaining:** on-device A50 verification (final AC) + tune open items 1 (`maxSpeechDuration`)
+  - **Remaining:** on-device phone verification (final AC) + tune open items 1 (`maxSpeechDuration`)
     and 3 (`transcribing` flag) to taste.

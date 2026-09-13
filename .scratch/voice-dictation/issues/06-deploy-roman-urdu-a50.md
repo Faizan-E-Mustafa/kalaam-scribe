@@ -1,7 +1,7 @@
-# 06: Deploy Roman-Urdu model to A50
+# 06: Deploy Roman-Urdu model to the phone
 
 **What to build:** The validated Roman-Urdu whisper.cpp model
-(`ggml-model-q4_0.bin`, small, q4_0, 139 MB) is deployed on the A50 and
+(`ggml-model-q4_0.bin`, small, q4_0, 139 MB) is deployed on the phone and
 `dictate` switches to it, giving on-device dictation that transcribes spoken
 Roman Urdu into clean Roman/Latin script.
 
@@ -22,7 +22,7 @@ Roman Urdu into clean Roman/Latin script.
 
 ## Steps
 
-- [ ] Get `ggml-model-q4_0.bin` (139 MB) onto the A50 at
+- [ ] Get `ggml-model-q4_0.bin` (139 MB) onto the phone at
       `~/whisper.cpp/models/ggml-model-q4_0.bin`
       (now downloadable from `femustafa/voicedictation-models`, or transfer
       method TBD: USB/adb push, `termux-setup-storage` + file copy, or cloud
@@ -31,9 +31,9 @@ Roman Urdu into clean Roman/Latin script.
       `-l en` → `-l auto` (commit the change).
 - [ ] Push updated `dictate.sh` to the phone.
 - [ ] Verify a full record→transcribe→clipboard→paste loop with a Roman-Urdu
-      message on the A50 (can reuse ticket 05 flow).
+      message on the phone (can reuse ticket 05 flow).
 - [ ] On-phone transcript must be Roman/Latin script, not Urdu script.
-- [ ] Re-run `tools/bench/bench.sh` to capture small-model timing/RTF on the A50
+- [ ] Re-run `tools/bench/bench.sh` to capture small-model timing/RTF on the phone
       (decides whether q4 small is acceptable vs falling back to base).
 
 ## Notes / risks
@@ -41,6 +41,6 @@ Roman Urdu into clean Roman/Latin script.
 - Small model on Exynos 9610 (CPU-only, 4 GB RAM) will be slower than `base.en`.
   If too slow, options: accept latency, use a smaller quant (q5/q4), or keep
   `base.en` for English and only the RU model for Roman-Urdu mode.
-- whisper.cpp must be a recent build to load this model (it was built on the A50
+- whisper.cpp must be a recent build to load this model (it was built on the phone
   already). Volatile: the model is multilingual vocab 51865 — fine.
 - Keep `-l auto`. Do not set `-l ur`.

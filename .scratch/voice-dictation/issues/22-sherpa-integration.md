@@ -9,7 +9,7 @@ Integrate sherpa‑onnx into the Android app, enabling `initial_prompt` support 
 - [ ] `initial_prompt` parameter passed to sherpa‑onnx — not available in Java API (GitHub #2295); workaround: `language="en"` in `OfflineWhisperModelConfig` keeps output in Latin/Roman script
 - [x] VAD (voice activity detection) enabled via separate `Vad` class with `SileroVadModelConfig`
 - [x] Thread count configured auto‑select `min(6, Runtime.getRuntime().availableProcessors())` on first launch, with user override in Settings
-- [x] App builds and runs on A50 emulator/device
+- [x] App builds and runs on phone emulator/device
 - [ ] Transcription output stays in Roman Urdu/Latin script without English leakage on typical short clips — requires full PCM frame pipeline + ONNX model conversion (ticket #21)
 
 ## Notes

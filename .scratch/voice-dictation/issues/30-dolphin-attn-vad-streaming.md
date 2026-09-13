@@ -104,7 +104,7 @@ changed (via `transcribeClip`).
   python `silero-vad` segmentation pass on real Urdu clips to lock expected per-segment
   transcripts before porting.
 - **JVM unit tests** (no device) via the `WhisperEngine`/`WhisperModelRef` seam.
-- **On-device (A50)**: re-run the ticket-29 RTF benchmark on a long clip, single-shot vs
+- **On-device (the phone)**: re-run the ticket-29 RTF benchmark on a long clip, single-shot vs
   VAD-segmented.
 
 ## Comments
@@ -119,4 +119,4 @@ changed (via `transcribeClip`).
   `./gradlew :app:testDebugUnitTest` green (32 tests total). `assembleDebug` APK builds.
   `lintDebug` reports only the **pre-existing** `AudioRecorder.kt:37` MissingPermission
   (untouched). On-device RTF benchmark on a >20 s clip (single-shot vs VAD-segmented) is
-  the remaining acceptance item — needs the A50 + installed APK.
+  the remaining acceptance item — needs the phone + installed APK.

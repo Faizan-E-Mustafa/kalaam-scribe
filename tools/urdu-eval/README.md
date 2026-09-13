@@ -2,7 +2,7 @@
 
 Interactive harness for comparing Urdu-script Whisper fine-tunes on **live
 microphone voice** (via the WSLg mic bridge) before picking one to deploy to the
-A50.
+phone.
 
 ## Scripts
 
@@ -45,7 +45,7 @@ Converted f16 GGML models and clips live under `URDU_EVAL_DIR`
 ## Benchmark timing (dev machine, same 3.9 s clip, `-l ur`, whisper-cli)
 
 Measured on the Linux dev machine (8-core, CPU-only). RTF < 1 means faster than
-real-time. The A50 (Exynos 9610, CPU-only) will be proportionally slower.
+real-time. The phone (Exynos 9610, CPU-only) will be proportionally slower.
 
 | Model                  | size  | f16 wall | f16 RTF | q4_0 wall | q4_0 RTF |
 |------------------------|-------|----------|---------|-----------|----------|
@@ -57,7 +57,7 @@ real-time. The A50 (Exynos 9610, CPU-only) will be proportionally slower.
 - q4_0 is roughly **1.6–2.4x faster** than f16 across all models.
 - **base q4_0 is fastest** (RTF 0.38x) but has the worst accuracy (WER 39.1%).
 - The three smalls at q4_0 all land around real-time (RTF ~1.0–1.17x) on this
-  machine; expect notably worse on the A50.
+  machine; expect notably worse on the phone.
 
 ## Usage
 

@@ -1,7 +1,7 @@
 # Voice Dictation (Local)
 
 Converts spoken input into WhatsApp message text entirely on-device (no cloud, no
-WhatsApp API). Runs as a Termux prototype on a Samsung A50; the Linux desktop is
+WhatsApp API). Runs as a Termux prototype on an Android device; the Linux desktop is
 only a development/validation harness.
 
 ## Language

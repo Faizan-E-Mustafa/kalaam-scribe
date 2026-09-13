@@ -2,7 +2,7 @@
 
 Validates faster-whisper (`base.en`) transcription on the Linux dev machine before
 anything touches the phone. This is a **development harness only**; the runtime
-target is the Samsung A50 (see `.scratch/voice-dictation/spec.md`).
+target is an Android device (see `.scratch/voice-dictation/spec.md`).
 
 ## Why Python 3.11 (the blocker workaround)
 

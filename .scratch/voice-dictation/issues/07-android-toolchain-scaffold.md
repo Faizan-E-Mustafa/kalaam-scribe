@@ -2,7 +2,7 @@
 
 **What to build:** A self-contained `android/` directory in this repo holding a
 Kotlin Android app project (Jetpack Compose) that opens/builds and produces a
-skeleton APK installable on the A50. Includes setting up the Android toolchain on
+skeleton APK installable on the phone. Includes setting up the Android toolchain on
 the dev machine (WSL2, amd64) so later tickets can build and verify.
 
 **Blocked by:** None (can start immediately).
@@ -15,9 +15,9 @@ the dev machine (WSL2, amd64) so later tickets can build and verify.
       NDK) installed and reachable on the WSL2 dev machine; `gradlew` runs.
 - [ ] A clean `android/` Gradle project with a Compose app that produces an APK
       (multi-ABI) without errors.
-- [ ] The APK installs on the A50 (Android 8.0+/API 26+) launched from the home
+- [ ] The APK installs on the phone (Android 8.0+/API 26+) launched from the home
       screen showing a placeholder screen.
-- [ ] A device/adb path from WSL2 to the A50 is documented (USB/adb over WSL2 or
+- [ ] A device/adb path from WSL2 to the phone is documented (USB/adb over WSL2 or
       network adb), since USB passthrough from WSL2 needs explicit setup.
 
 ## Progress
@@ -35,10 +35,10 @@ the dev machine (WSL2, amd64) so later tickets can build and verify.
       written in `android/`.
 - [x] First build: `./gradlew assembleDebug` succeeded, producing
       `app/build/outputs/apk/debug/app-debug.apk` (~16 MB).
-- [x] Pending (human/device step): install the APK on the A50 and confirm the
-      placeholder screen launches. The A50 is not currently connected to the
+- [x] Pending (human/device step): install the APK on the phone and confirm the
+      placeholder screen launches. The phone is not currently connected to the
       Windows host (`usbipd list` shows only laptop peripherals). To finish,
-      plug the A50 into the PC, enable Developer options + USB debugging, and
+      plug the phone into the PC, enable Developer options + USB debugging, and
       attach it to WSL2 via usbipd (e.g. `usbipd bind` then `usbipd attach` in an
       admin PowerShell), or use wireless debugging. Then `adb install
       app/build/outputs/apk/debug/app-debug.apk`.
@@ -47,7 +47,7 @@ the dev machine (WSL2, amd64) so later tickets can build and verify.
 
 - adb lives only in WSL2 at `~/Android/Sdk/platform-tools/adb` (not on Windows).
 - USB path: `usbipd bind --busid 1-4` then `usbipd attach --wsl --busid 1-4` (admin
-  PowerShell) exposes the A50 to WSL2, but the device node is root-owned
+  PowerShell) exposes the phone to WSL2, but the device node is root-owned
   (`no permissions`); fix via udev rule or `sudo chmod 666` on the node.
 - Wireless path (chosen): phone Developer options → Wireless debugging → pair +
   connect. Pairing succeeded. Remaining manual steps with the user:
@@ -56,7 +56,7 @@ the dev machine (WSL2, amd64) so later tickets can build and verify.
 
 ## Resolution
 
-- APK installed on the A50 via wireless adb (`adb install …/app-debug.apk` →
+- APK installed on the phone via wireless adb (`adb install …/app-debug.apk` →
   "Success"). User drove the device connection; couldn't run adb install myself as
   they asked to do device-touching commands manually first.
 - Ticket 07 accepted: toolchain installed, scaffold builds, APK installs.

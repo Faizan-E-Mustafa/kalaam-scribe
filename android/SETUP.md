@@ -6,7 +6,7 @@ connecting an Android device, and running the whisper.cpp AAR on-device spike.
 
 It is written with **portable placeholders** so it survives in a public repo. The
 original machine was **Windows 11 host running WSL2 (Ubuntu 26.04, amd64)**, building
-for a **Samsung Galaxy A50 (SM-A505FN, Android 11 / API 30, arm64-v8a)**.
+for a **an Android phone (arm64-v8a, Android 11/API 30)**.
 
 > Conventions used below:
 > - `~/...` = your Linux home dir inside WSL2.
@@ -27,7 +27,7 @@ for a **Samsung Galaxy A50 (SM-A505FN, Android 11 / API 30, arm64-v8a)**.
 | Kotlin | 2.0.21 |
 | Compose BOM | 2024.12.01 |
 | whisper.cpp AAR | `dev.ffmpegkit-maintained:whisper-android:1.0.0` |
-| Target phone | Samsung A50, arm64-v8a, Android 11 (API 30) |
+| Target phone | Android device, arm64-v8a, Android 11 (API 30) |
 
 **Key facts discovered (avoid repeating them):**
 
@@ -154,7 +154,7 @@ phone USB mode to **File Transfer/MTP**, enable **USB debugging**). Then:
 
 ```powershell
 # admin PowerShell on Windows
-usbipd list                                  # note the BUSID of the Samsung/ADB device, e.g. 1-4
+usbipd list                                  # note the BUSID of the Android ADB device, e.g. 1-4
 usbipd bind --busid 1-4
 usbipd attach --wsl --busid 1-4
 ```
@@ -186,7 +186,7 @@ adb install -r android/app/build/outputs/apk/debug/app-debug.apk
 ## 7. Reproduce the on-device spike (ticket 08)
 
 Goal: prove the whisper AAR loads a **quantized GGML model** and transcribes a known
-WAV on the A50.
+WAV on the phone.
 
 ### 7a. Obtain test assets
 

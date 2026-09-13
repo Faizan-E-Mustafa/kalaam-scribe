@@ -189,7 +189,7 @@ ENV_FILE="${SCRIPT_DIR}/.env"
 
 TOTAL_STAGES=7
 
-banner "Termux + whisper.cpp on the Samsung A50"
+banner "Termux + whisper.cpp on Android"
 
 # ---------------------------------------------------------------------------
 # Stage 1: Install Termux, Termux:API, Termux:Widget from F-Droid.
@@ -221,7 +221,7 @@ stage "Update Termux and install build tools"
 say "In Termux, run these one at a time:"
 step "pkg update && pkg upgrade -y"
 step "pkg install -y git cmake clang make ffmpeg curl termux-api"
-note "This takes a few minutes on the A50. Keep Termux in the foreground and on charge."
+note "This takes a few minutes on the phone. Keep Termux in the foreground and on charge."
 pause "All packages installed without errors?"
 
 # ---------------------------------------------------------------------------
@@ -264,7 +264,7 @@ write_env WHISPER_MODEL "$MODEL_FILE"
 # Turn off Wi-Fi/mobile first, then prove whisper-cli transcribes with no network.
 # ---------------------------------------------------------------------------
 stage "Verify offline transcription (no internet)"
-say "Now switch the A50 to Airplane mode (Wi-Fi + mobile data off)."
+say "Now switch the phone to Airplane mode (Wi-Fi + mobile data off)."
 pause "Airplane mode is ON — no internet on the phone?"
 step "./build/bin/whisper-cli -m \"$MODEL_FILE\" -f demo.wav -l en -otxt -of demo"
 step "cat demo.txt"

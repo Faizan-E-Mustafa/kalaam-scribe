@@ -67,6 +67,4 @@ when present) for running tests, linting, and typechecks.
 
 The native Android app lives in `android/`. To build the toolchain, build the APK,
 connect a device, and reproduce the on-device whisper spike, follow
-`android/SETUP.md` (a portable, copy-paste runbook). Key gotchas: adb runs inside
-WSL2 only; the whisper AAR package is `dev.ffmpegkit.whisper`; load models from the
-app's internal `filesDir` (not `/sdcard/Download/`) on Android 11+ scoped storage.
+`android/SETUP.md` (a portable, copy-paste runbook).

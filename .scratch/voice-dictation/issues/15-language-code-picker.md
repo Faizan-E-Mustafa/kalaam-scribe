@@ -22,7 +22,7 @@ across launches. Empty selection = auto-detect.
 **Blocked by:** 13 (Foreground service — the service calls `whisper.transcribe`,
 and the manager supplies the language).
 
-**Status:** in progress (implemented, build + unit tests pass; awaiting A50 on-device verify)
+**Status:** in progress (implemented, build + unit tests pass; awaiting phone on-device verify)
 
 ## Acceptance criteria
 
@@ -59,7 +59,7 @@ and the manager supplies the language).
 
 ## Verification
 
-`./gradlew :app:testDebugUnitTest :app:assembleDebug`; reinstall on A50; pick a
+`./gradlew :app:testDebugUnitTest :app:assembleDebug`; reinstall on phone; pick a
 multilingual Model → choose a language from the dropdown → record → confirm the
 selected language drives transcription.
 

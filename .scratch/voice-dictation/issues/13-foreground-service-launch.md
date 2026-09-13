@@ -3,7 +3,7 @@
 **What to build:** Reliable up-front launch: a foreground service that runs only
 while recording/transcribing (then stops — no permanent service), plus an app icon
 and a home-screen widget/shortcut to start dictation from the home screen in the
-background on the A50.
+background on the phone.
 
 **Scope decision (user, 2026-08-31):** Foreground service **only** — the
 home-screen widget/shortcut is deferred. The service delivers the core

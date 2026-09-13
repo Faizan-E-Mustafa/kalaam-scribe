@@ -240,7 +240,7 @@ for both variants — reconfirms the decoder MUST use the FULL-logits output for
   Ivy repo in `settings.gradle.kts` (`@aar`; JitPack was never going to build the tag).
   Verified in the merged APK: exactly one `libonnxruntime.so` per ABI exporting `VERS_1.27.0`,
   with both `libsherpa-onnx-jni.so` and `libonnxruntime4j_jni.so` requiring `VERS_1.27.0`.
-  **On-device re-verify (2026-09-05) DONE**: installed via `adb install -r` on the A50 and
+  **On-device re-verify (2026-09-05) DONE**: installed via `adb install -r` on the phone and
   drove both engines — `SherpaWhisperEngine: loading ONNX sherpa-onnx model with full config`
   (libsherpa-onnx-jni.so resolved) and a DolphinAttn 4.0 s beam decode (`decodeMs=1208`).
   No crash, process stable (same PID survived); unit tests green.

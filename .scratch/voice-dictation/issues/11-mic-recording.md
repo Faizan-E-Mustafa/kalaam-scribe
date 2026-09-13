@@ -37,10 +37,10 @@ All acceptance criteria met.
 ## Acceptance criteria
 
 - [x] Recording via the mic produces a valid 16 kHz mono PCM WAV file. (Code
-      complete; file-validity on the A50 is the pending device verification.)
+      complete; file-validity on the phone is the pending device verification.)
 - [x] A start/stop control ends the capture and the resulting file can be read
-      back on the A50 (verified on device, not unit-tested — hardware seam).
-      PASSED: valid 16k mono PCM WAV, ~7.6 s of real speech pulled from the A50.
+      back on the phone (verified on device, not unit-tested — hardware seam).
+      PASSED: valid 16k mono PCM WAV, ~7.6 s of real speech pulled from the phone.
 - [x] Mic runtime permission is requested and handled.
 - [x] The recording path avoids needing ffmpeg on-device (matches the Phase 1
       16 kHz step; the whisper AAR decodes/resamples).

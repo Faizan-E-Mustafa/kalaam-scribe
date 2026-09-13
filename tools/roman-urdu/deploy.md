@@ -1,4 +1,4 @@
-# Deploy Roman-Urdu model to the A50
+# Deploy Roman-Urdu model to the phone
 
 Validated dev-machine artifacts are staged on Windows at:
 
@@ -8,10 +8,10 @@ Validated dev-machine artifacts are staged on Windows at:
 
 ## 1. Get the files onto the phone
 
-Two files go onto the A50. Use any route you like (file manager, cloud
+Two files go onto the phone. Use any route you like (file manager, cloud
 upload + phone download, email, etc.). The model is 139 MB.
 
-Target locations on the A50:
+Target locations on the phone:
 
 - Model:   `~/whisper.cpp/models/ggml-model-q4_0.bin`
 - Script:  `$PREFIX/bin/dictate`  (overwrite the existing one)
@@ -22,7 +22,7 @@ place with any editor/copy; remember to keep it executable
 
 ## 2. If copying via Termux from the phone's storage
 
-On the A50, after you've landed the files somewhere in shared storage
+On the phone, after you've landed the files somewhere in shared storage
 (e.g. `~/storage/downloads/dictate-deploy/`):
 
     termux-setup-storage        # grant storage access once

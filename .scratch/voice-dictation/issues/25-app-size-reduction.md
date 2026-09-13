@@ -57,7 +57,7 @@ Debug APK `android/app/build/outputs/apk/debug/app-debug.apk` ≈ **108 MB**
    `material3` + `material-icons-extended`. `material3` does NOT depend on the
    old material base module, so exclusion is safe. Removes ~23K unused classes.
 3. **Drop `x86_64` from `ndk.abiFilters`** if no emulator support needed
-   (~24 MB native; x86_64 is emulator-only). Device (Samsung A50) is
+   (~24 MB native; x86_64 is emulator-only). Target device is
    arm64-v8a/armeabi-v7a.
 4. **Switch `material-icons-extended` → `material-icons-core`** if only a
    subset of icons is used (reduces icon footprint).

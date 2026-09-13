@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 #
-# bench — benchmark whisper.cpp models on the A50 for a recorded clip (ticket 04).
+# bench — benchmark whisper.cpp models on the phone for a recorded clip (ticket 04).
 #
-# Usage (on the A50, in Termux):
+# Usage (on the phone, in Termux):
 #   bench <audio-file> [texts...]
 #
 # Converts the audio to 16 kHz mono WAV, then runs whisper-cli with each of the

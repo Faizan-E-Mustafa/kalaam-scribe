@@ -1,9 +1,9 @@
 # 05: Verify full flow into WhatsApp
 
-**What to build:** The complete end-to-end dictation flow is verified on the A50 in airplane mode: record → local transcription → clipboard copy → paste into a WhatsApp chat → manual review → send. This confirms it is truly offline and usable for real messages.
+**What to build:** The complete end-to-end dictation flow is verified on the phone in airplane mode: record → local transcription → clipboard copy → paste into a WhatsApp chat → manual review → send. This confirms it is truly offline and usable for real messages.
 
-**Blocked by:** 04 (Benchmark transcription on the A50) — in practice ticket 05 can run now
-with `base.en` (the model already installed on the A50); the benchmark later only decides
+**Blocked by:** 04 (Benchmark transcription on the phone) — in practice ticket 05 can run now
+with `base.en` (the model already installed on the phone); the benchmark later only decides
 the default model to lock into `dictate.sh`. Benchmark can be re-run afterward if desired.
 
 **Status:** in progress
