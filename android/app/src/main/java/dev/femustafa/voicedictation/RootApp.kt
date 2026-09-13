@@ -29,10 +29,11 @@ fun RootApp() {
 
     if (showOnboarding) {
         LanguageOnboardingScreen(
-            onContinue = { code ->
-                app.setLanguageCode(code)
-                showOnboarding = false
-            },
+            viewModel = pickerViewModel,
+            onSelect = { entry -> pickerViewModel.select(entry, manager) },
+            onDownload = { entry -> pickerViewModel.download(entry, manager) },
+            onLanguageChange = { code -> app.setLanguageCode(code) },
+            onContinue = { showOnboarding = false },
         )
     } else if (showPicker) {
         ModelPickerScreen(
@@ -40,7 +41,7 @@ fun RootApp() {
             onSelect = { entry ->
                 pickerViewModel.select(entry, manager)
             },
-            onDownload = { entry -> pickerViewModel.download(entry) },
+            onDownload = { entry -> pickerViewModel.download(entry, manager) },
             onClose = { showPicker = false },
         )
     } else if (showSettings) {

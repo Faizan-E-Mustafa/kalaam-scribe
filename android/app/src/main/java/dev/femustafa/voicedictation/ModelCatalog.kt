@@ -546,6 +546,21 @@ object ModelCatalog {
     val onnxDefault: CatalogEntry
         get() = byActiveId("roman-urdu-int8") ?: error("roman-urdu-int8 must resolve")
 
+    /**
+     * The model recommended for a dictation language [code] (a [WhisperLanguages]
+     * code, or null/blank for Auto-detect). Drives the welcome screen's
+     * "Recommended" pick and the model picker's default highlight:
+     * - `en` → English · Balanced (`base.en-int8`)
+     * - `ur` → Dolphin · Balanced (`dolphin-attn-base`, fp16/arm)
+     * - any other language (multilingual tier covers them all) → Multilingual ·
+     *   Balanced (`base-int8`), also the pick for Auto-detect.
+     */
+    fun recommendedForLanguage(code: String?): CatalogEntry? = when (code) {
+        "en" -> byActiveId("base.en-int8")
+        "ur" -> byActiveId("dolphin-attn-base")
+        else -> byActiveId("base-int8")
+    }
+
     /** Look up by model id across all five catalogs. */
     fun byId(id: String): CatalogEntry? =
         (ggmlModels + onnxModels + dolphinCtcModels + omnilingualModels + dolphinAttnModels).firstOrNull { it.model.id == id }

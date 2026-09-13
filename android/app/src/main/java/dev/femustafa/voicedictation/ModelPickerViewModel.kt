@@ -100,7 +100,7 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
-    fun download(entry: CatalogEntry) {
+    fun download(entry: CatalogEntry, manager: WhisperManager) {
         // Each catalog entry maps to exactly one format download path.
         val format = entryFormat(entry)
         setState(entry, DownloadState.Downloading(0f))
@@ -109,7 +109,15 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
                 setState(entry, DownloadState.Downloading(progress))
             }
             when (result) {
-                is ModelDownloader.Result.Success -> setState(entry, DownloadState.Ready)
+                is ModelDownloader.Result.Success -> {
+                    setState(entry, DownloadState.Ready)
+                    // The recommended model auto-selects once downloaded so a fresh
+                    // user can press Continue (or start dictating) without a manual
+                    // radio tap. Other downloads keep the existing tap-to-select.
+                    if (entry.model.id == ModelCatalog.recommendedForLanguage(app.whisper.languageCode.value)?.model?.id) {
+                        select(entry, manager)
+                    }
+                }
                 is ModelDownloader.Result.Failure -> setState(entry, DownloadState.Failed(result.message))
             }
         }
@@ -128,24 +136,28 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
      * catalog* and support the currently-selected language (disabled GGML entries
      * are never selectable). Prefer the user's persisted selection when it is
      * still active, language-compatible, and already downloaded; otherwise fall
-     * back to the first downloaded compatible entry, else the catalog default when
-     * it is compatible, else the first compatible entry in the list.
+     * back to the first downloaded compatible entry, then the recommended model
+     * for the language ([ModelCatalog.recommendedForLanguage]), else the catalog
+     * default when compatible, else the first compatible entry in the list.
      */
     private fun defaultOrPersistedId(): String {
         val catalog = catalogFor(app.modelFormat)
         val supported = catalog.filterForLanguage(app.whisper.languageCode.value)
         val persisted = app.persistedModelId?.let { ModelCatalog.byId(it) }
+        val recommended = ModelCatalog.recommendedForLanguage(app.whisper.languageCode.value)
         val candidates = buildList {
             if (persisted != null) add(persisted)
             addAll(supported)
         }
-        // First downloaded entry, preferring the persisted one; else the default.
+        // First downloaded entry, preferring the persisted one; else the recommended
+        // model for the language; else the catalog default.
         val fallbackDefault =
             if (app.modelFormat == ModelFormat.ONNX) ModelCatalog.onnxDefault else ModelCatalog.ggmlDefault
         val firstDownloaded = candidates.firstOrNull {
             it in supported && downloader.isDownloaded(it, app.modelFormat)
         }
         return (firstDownloaded
+            ?: recommended?.takeIf { it in supported }
             ?: fallbackDefault.takeIf { it in supported }
             ?: supported.firstOrNull()
             ?: fallbackDefault).model.id

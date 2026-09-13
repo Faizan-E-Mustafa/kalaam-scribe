@@ -18,11 +18,9 @@ import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -142,55 +140,6 @@ private fun LanguagePicker(
                     },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun ModelRow(
-    entry: CatalogEntry,
-    dlState: ModelPickerViewModel.DownloadState,
-    selected: Boolean,
-    loading: Boolean,
-    onSelect: () -> Unit,
-    onDownload: () -> Unit,
-) {
-    val meta = buildString {
-        // Tech subtext: engine title · precision · size (no format/language jargon).
-        append(entry.modelName)
-        entry.precision?.let { append(" · ${it.label}") }
-        if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
-        if (ModelCatalog.isOmnilingual(entry)) append(" · auto-detect · 1600+ languages")
-    }
-Row(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RadioButton(selected = selected, onClick = onSelect)
-            Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(text = entry.displayName, style = MaterialTheme.typography.bodyLarge)
-                Text(text = meta, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (loading) {
-                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-                }
-                when (dlState) {
-                    is ModelPickerViewModel.DownloadState.Downloading -> {
-                        LinearProgressIndicator(progress = { dlState.progress }, modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
-                    }
-                is ModelPickerViewModel.DownloadState.Failed -> {
-                    Text("Download failed: ${dlState.message}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                }
-                else -> {}
-            }
-        }
-        when (dlState) {
-            ModelPickerViewModel.DownloadState.Ready -> Text("Ready", color = MaterialTheme.colorScheme.primary)
-            is ModelPickerViewModel.DownloadState.Downloading -> Text("…", style = MaterialTheme.typography.bodySmall)
-            ModelPickerViewModel.DownloadState.NotDownloaded -> Button(
-                onClick = onDownload,
-                enabled = entry.sourceUrl != null || entry.onnxSourceUrl != null,
-            ) { Text("Download") }
-            is ModelPickerViewModel.DownloadState.Failed -> Button(onClick = onDownload) { Text("Retry") }
         }
     }
 }

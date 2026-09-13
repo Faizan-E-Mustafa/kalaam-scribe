@@ -130,6 +130,28 @@ class ModelCatalogTest {
     }
 
     @Test
+    fun recommendedForLanguagePicksBalancedModelsPerLanguage() {
+        assertEquals("base.en-int8", ModelCatalog.recommendedForLanguage("en")!!.model.id)
+        assertEquals("dolphin-attn-base", ModelCatalog.recommendedForLanguage("ur")!!.model.id)
+        // Every other language (and Auto-detect) falls back to Multilingual · Balanced.
+        assertEquals("base-int8", ModelCatalog.recommendedForLanguage("hi")!!.model.id)
+        assertEquals("base-int8", ModelCatalog.recommendedForLanguage("haw")!!.model.id)
+        assertEquals("base-int8", ModelCatalog.recommendedForLanguage(null)!!.model.id)
+        assertEquals("base-int8", ModelCatalog.recommendedForLanguage("")!!.model.id)
+    }
+
+    @Test
+    fun recommendedForLanguageAlwaysSupportsTheRequestedLanguage() {
+        for (code in listOf("en", "ur", "hi", "haw", "de", null)) {
+            val rec = ModelCatalog.recommendedForLanguage(code)!!
+            assertTrue("recommended ${rec.model.id} must be active", rec in ModelCatalog.activeCatalog)
+            if (code != null) {
+                assertTrue("recommended ${rec.model.id} must support $code", rec.supportsLanguage(code))
+            }
+        }
+    }
+
+    @Test
     fun onnxDefaultIsRomanUrduInt8() {
         val d = ModelCatalog.onnxDefault
         assertEquals("roman-urdu-int8", d.model.id)
