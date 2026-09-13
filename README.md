@@ -70,6 +70,8 @@ cd tools/validate_stt
 uv sync && uv run validate_stt.py
 ```
 
+> **Note for anyone cloning the repo:** Before building the Android app, you must create `android/local.properties` yourself (it is gitignored, so it is never committed) with your own Android SDK path, e.g. `sdk.dir=/path/to/your/Android/Sdk`. Without this file, Gradle will fail with "SDK location not found". See [`android/SETUP.md`](android/SETUP.md) for the full setup runbook.
+
 ## Documentation
 
 | Doc | Description |

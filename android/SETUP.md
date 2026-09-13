@@ -102,8 +102,7 @@ adb version          # copied from platform-tools, runs in WSL2
 sdkmanager --list_installed
 ```
 
-> Note: `local.properties` in the project sets `sdk.dir=/home/<USER>/Android/Sdk`.
-> Adjust it to your own SDK path (it is gitignored).
+> **Important for anyone cloning the repo:** `android/local.properties` is **gitignored** and **will not be committed** to the public repository. It is a local-only file that tells Gradle where your Android SDK is installed. You must create it yourself with your own SDK path (e.g., `sdk.dir=/path/to/your/Android/Sdk`) before building. Without it, Gradle will fail with "SDK location not found". See the section above on installing the Android SDK.
 
 ---
 
@@ -136,10 +135,13 @@ Two options. `adb` runs **inside WSL2**.
 1. On the phone: **Settings → Developer options → Wireless debugging → ON**.
 2. Tap **Pair device with pairing code** → note `IP:PAIR_PORT` + 6-digit code.
 3. In WSL2, pair (one-time):
-   ```bash
-   adb pair IP:PAIR_PORT CODE
-   # e.g. adb pair 192.168.1.20:37000 123456
-   ```
+    ```bash
+    adb pair IP:PAIR_PORT CODE
+    # Example: adb pair <IP>:<PORT> 123456
+    # Replace <IP> and <PORT> with your actual device IP and port
+    # (found in Settings → Developer options → Wireless debugging → Pair device)
+    # Example: adb pair 192.168.1.20:37000 123456
+    ```
 4. From the **Wireless debugging main screen** (not the pairing dialog) read the
    main `IP:PORT`, then connect:
    ```bash
