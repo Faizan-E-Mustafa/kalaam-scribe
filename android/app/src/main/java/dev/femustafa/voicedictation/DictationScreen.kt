@@ -62,7 +62,7 @@ private val AUDIO_MIME_TYPES = arrayOf("audio/wav", "audio/x-wav", "audio/mpeg")
 @Composable
 fun DictationScreen(
     viewModel: DictationViewModel,
-    currentModel: Model?,
+    currentModelName: String?,
     onOpenPicker: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
@@ -154,16 +154,7 @@ fun DictationScreen(
             AssistChip(
                 onClick = onOpenPicker,
                 label = {
-                    Text(
-                        currentModel?.let { m ->
-                            val mode = when (m.languageMode) {
-                                LanguageMode.Auto -> "Auto"
-                                LanguageMode.English -> "English"
-                                LanguageMode.RomanUrdu -> "Roman Urdu"
-                            }
-                            "${m.id} · $mode"
-                        } ?: "no model",
-                    )
+                    Text(currentModelName ?: "no model")
                 },
             )
         }

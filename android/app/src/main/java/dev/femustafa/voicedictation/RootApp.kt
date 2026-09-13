@@ -49,7 +49,7 @@ fun RootApp() {
     } else {
         DictationScreen(
             viewModel = dictationViewModel,
-            currentModel = manager.currentModel,
+            currentModelName = manager.currentModel?.let { ModelCatalog.byId(it.id)?.modelName },
             onOpenPicker = {
                 pickerViewModel.refresh()
                 showPicker = true
