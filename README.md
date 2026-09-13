@@ -44,6 +44,74 @@ A fully on-device voice dictation flow. The user taps a recorder, speaks a messa
 - ✅ **Manual send only** — no automessaging, no WhatsApp API
 - ✅ **Offline after setup** — models downloaded once, work without internet
 
+## Installation
+
+### Prerequisites
+
+- **Git**
+- **Linux harness:** Python 3.11–3.13 (or [`uv`](https://github.com/astral-sh/uv))
+- **Android app:** Android Studio or Android SDK + JDK 17 + an Android device (or emulator)
+
+### 1. Clone the repo
+
+```bash
+git clone <your-repo-url>
+cd voicedictation
+```
+
+### 2. Linux development harness (validate faster-whisper)
+
+```bash
+# one-time: install uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+export PATH="$HOME/.local/bin:$PATH"
+
+cd tools/validate_stt
+uv sync
+uv run validate_stt.py
+```
+
+This creates a Python 3.11 virtualenv and runs the `base.en` validation sample so you know the transcription pipeline works before touching the phone.
+
+### 3. Build and run the Android app
+
+First create `android/local.properties` with your Android SDK path (this file is gitignored):
+
+```bash
+echo "sdk.dir=$ANDROID_HOME" > android/local.properties
+```
+
+If `$ANDROID_HOME` is not set, use the absolute SDK path instead, e.g. `sdk.dir=/home/you/Android/Sdk`.
+
+Then build the app:
+
+```bash
+cd android
+./gradlew :app:assembleDebug
+```
+
+The APK is at `app/build/outputs/apk/debug/app-debug.apk`. Install it to a connected device:
+
+```bash
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+For full toolchain setup (JDK, SDK, device connection, wireless debugging), see [`android/SETUP.md`](android/SETUP.md).
+
+### 4. Models
+
+The app downloads the default model (Roman-Urdu q4_0) from HuggingFace on first launch and works offline afterward.
+
+For local spike/QA assets:
+
+```bash
+mkdir -p android/spike
+curl -fsSL -o android/spike/ggml-base-q8_0.bin \
+  "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base-q8_0.bin"
+curl -fsSL -o android/spike/jfk.wav \
+  "https://github.com/ggerganov/whisper.cpp/raw/master/samples/jfk.wav"
+```
+
 ## Key Decisions
 
 | Decision | Choice | Rationale |
