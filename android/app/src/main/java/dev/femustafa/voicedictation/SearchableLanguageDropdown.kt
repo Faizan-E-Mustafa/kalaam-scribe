@@ -18,9 +18,11 @@ import androidx.compose.ui.Modifier
 /**
  * Searchable language picker shared by the onboarding Welcome screen and the
  * settings sheet: an outlined dropdown whose field doubles as a filter box, so
- * the 100+ language list narrows by code or name as you type. [includeAutoDetect]
- * puts the "Auto-detect" entry on top (settings only — onboarding always picks a
- * concrete language). Selecting resets the query and closes the menu.
+ * the 100+ language list narrows by code or name as you type. Opening the menu
+ * prefills the box with the selected language (as editable text) — delete it and
+ * type a new one to change the choice. [includeAutoDetect] puts the "Auto-detect"
+ * entry on top (settings only — onboarding always picks a concrete language).
+ * Selecting resets the query and closes the menu.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -38,9 +40,11 @@ internal fun SearchableLanguageDropdown(
         if (name != null) "$name ($code)" else code
     } ?: if (includeAutoDetect) "Auto-detect" else ""
 
-    // While the menu is open the field shows the live search query; otherwise it
-    // shows the current selection.
-    val value = if (expanded && query.isNotEmpty()) query else selection
+    // While the menu is open the field is a live search box. It opens prefilled
+    // with the selected language's name as real, editable text, so the user can
+    // backspace/delete it and type a new language; deleting everything restores
+    // the full list. Collapsed, it shows the selection.
+    val value = if (expanded) query else selection
 
     val filtered = remember(query) {
         if (query.isBlank()) WhisperLanguages.entries
@@ -53,7 +57,11 @@ internal fun SearchableLanguageDropdown(
         expanded = expanded,
         onExpandedChange = {
             expanded = it
-            if (it) query = ""
+            if (it) {
+                // Prefill the box with the current selection (its name, not the
+                // full label) so it reads as editable text to clear and retype.
+                query = selectedCode?.let { code -> WhisperLanguages.nameOf(code) ?: code } ?: ""
+            }
         },
         modifier = modifier,
     ) {
