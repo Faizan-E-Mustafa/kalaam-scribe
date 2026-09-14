@@ -130,7 +130,6 @@ fun AdvancedSettingsSheet(
                 )
             }
 
-            SectionHeader(text = "Language")
             LanguagePicker(
                 selectedCode = languageCode,
                 onSelect = viewModel::setLanguageCode,
@@ -138,7 +137,6 @@ fun AdvancedSettingsSheet(
 
             HorizontalDivider()
 
-            SectionHeader(text = "Model")
             // Dropdown matching [LanguagePicker]: only the current model is shown
             // until the user expands it, so the whole catalog is never exposed up front.
             ModelSelector(
