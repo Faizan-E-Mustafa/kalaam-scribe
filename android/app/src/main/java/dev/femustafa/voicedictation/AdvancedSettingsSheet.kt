@@ -374,7 +374,7 @@ private fun ModelSelector(
                     trailingIcon = {
                         when (dlState) {
                             ModelPickerViewModel.DownloadState.Ready -> {}
-                            is ModelPickerViewModel.DownloadState.Downloading -> Text("…")
+                            is ModelPickerViewModel.DownloadState.Downloading -> Text("${(dlState.progress * 100).toInt()}%")
                             is ModelPickerViewModel.DownloadState.Failed -> IconButton(onClick = { onDownload(entry) }) {
                                 Icon(Icons.Filled.Download, contentDescription = "Retry download")
                             }

@@ -75,7 +75,10 @@ internal fun ModelRow(
         }
         when (dlState) {
             ModelPickerViewModel.DownloadState.Ready -> Text("Ready", color = MaterialTheme.colorScheme.primary)
-            is ModelPickerViewModel.DownloadState.Downloading -> Text("…", style = MaterialTheme.typography.bodySmall)
+            is ModelPickerViewModel.DownloadState.Downloading -> Text(
+                "${(dlState.progress * 100).toInt()}%",
+                style = MaterialTheme.typography.bodySmall,
+            )
             ModelPickerViewModel.DownloadState.NotDownloaded -> IconButton(
                 onClick = onDownload,
                 enabled = entry.sourceUrl != null || entry.onnxSourceUrl != null,

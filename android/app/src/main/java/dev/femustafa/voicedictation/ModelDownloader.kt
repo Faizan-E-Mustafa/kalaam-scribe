@@ -3,6 +3,7 @@ package dev.femustafa.voicedictation
 import android.util.Log
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.async
 
@@ -63,6 +64,41 @@ class ModelDownloader(
 
         /** The shared Silero VAD model filename (one file, used by every Dolphin attention model). */
         fun vadFileName(): String = "silero_vad.onnx"
+    }
+
+    /**
+     * Combines progress across the several files that make up one model download
+     * (e.g. encoder + decoder + tokens + VAD). The total is the sum of every
+     * file's Content-Length, registered as each connection response arrives, and
+     * each emitted fraction is the cumulative bytes written so far divided by
+     * that total. This keeps the percentage honest: it never reaches 100% while
+     * a sibling (the decoder) is still streaming.
+     */
+    private class AggregateProgress(private val onProgress: (Float) -> Unit) {
+        private val totalBytes = AtomicLong(0)
+        private val downloadedBytes = AtomicLong(0)
+        private var lastPercent = -1
+
+        /** Register the size of a file that is about to be downloaded. */
+        fun addFile(bytes: Long) {
+            if (bytes > 0) totalBytes.addAndGet(bytes)
+        }
+
+        /** Report that [bytes] more bytes were written; emits a throttled combined fraction. */
+        fun addDownloaded(bytes: Long) {
+            if (bytes <= 0) return
+            val total = totalBytes.get()
+            if (total <= 0) return
+            val fraction = downloadedBytes.addAndGet(bytes).toFloat() / total
+            val percent = (fraction * 100).toInt().coerceIn(0, 100)
+            if (percent != lastPercent) {
+                lastPercent = percent
+                onProgress(fraction.coerceAtMost(1f))
+            }
+        }
+
+        /** Force the final 100% once every file in the set is done. */
+        fun finish() = onProgress(1f)
     }
 
     /**
@@ -245,56 +281,71 @@ class ModelDownloader(
         val url = entry.onnxSourceUrl
             ?: return Result.Failure("No ONNX URL for model ${entry.model.id}")
 
+        val progress = AggregateProgress(onProgress)
         // The sherpa-onnx pre-exported model ships encoder + decoder + tokens as
         // three sibling files. The encoder URL points at `*-encoder.onnx`; the
         // decoder and tokens come from sibling URLs derived by swapping the suffix.
         val encoderTarget = java.io.File(baseDir, onnxEncoderName(entry))
         if (encoderTarget.exists()) {
-            // Encoder already downloaded; still try to fill any missing siblings.
-            ensureSiblings(entry, url)
-            onProgress(1f)
+            // Encoder already downloaded; still fill any missing siblings, reporting
+            // their progress so the bar doesn't sit frozen while they stream.
+            ensureSiblings(entry, url, progress)
+            progress.finish()
             return Result.Success(encoderTarget.length())
         }
 
         val encoderTmp = java.io.File(baseDir, "${onnxEncoderName(entry)}.part")
-        val connection = URL(url).openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            connection.connect()
-            val code = connection.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
-                return httpFailure(code, url)
-            }
-            val total = connection.contentLengthLong
-            var downloaded = 0L
-            encoderTarget.parentFile?.mkdirs()
+        return coroutineScope {
+            // Stream the decoder/tokens/VAD siblings concurrently with the encoder:
+            // every Content-Length is registered up front, so the aggregate
+            // percentage advances monotonically instead of resetting when the
+            // decoder joins after the encoder finishes.
+            val siblingsDeferred = async { ensureSiblings(entry, url, progress) }
+            val result = try {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 15_000
+                    connection.readTimeout = 30_000
+                    connection.connect()
+                    val code = connection.responseCode
+                    if (code != HttpURLConnection.HTTP_OK) {
+                        httpFailure(code, url)
+                    } else {
+                        progress.addFile(connection.contentLengthLong)
+                        var downloaded = 0L
+                        encoderTarget.parentFile?.mkdirs()
 
-            connection.inputStream.use { input ->
-                encoderTmp.outputStream().use { out ->
-                    val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buf)
-                        if (read == -1) break
-                        out.write(buf, 0, read)
-                        downloaded += read
-                        if (total > 0) onProgress(downloaded.toFloat() / total)
+                        connection.inputStream.use { input ->
+                            encoderTmp.outputStream().use { out ->
+                                val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                                while (true) {
+                                    val read = input.read(buf)
+                                    if (read == -1) break
+                                    out.write(buf, 0, read)
+                                    downloaded += read.toLong()
+                                    progress.addDownloaded(read.toLong())
+                                }
+                            }
+                        }
+
+                        if (encoderTmp.renameTo(encoderTarget)) {
+                            encoderTmp.delete()
+                            Result.Success(downloaded)
+                        } else {
+                            encoderTmp.delete()
+                            Result.Failure("rename failed")
+                        }
                     }
+                } finally {
+                    connection.disconnect()
                 }
-            }
-
-            if (encoderTmp.renameTo(encoderTarget)) {
+            } catch (e: Exception) {
                 encoderTmp.delete()
-                ensureSiblings(entry, url)
-                onProgress(1f)
-                return Result.Success(downloaded)
+                Result.Failure(e.message ?: e.toString())
             }
-            return Result.Failure("rename failed")
-        } catch (e: Exception) {
-            encoderTmp.delete()
-            return Result.Failure(e.message ?: e.toString())
-        } finally {
-            connection.disconnect()
+            siblingsDeferred.await()
+            progress.finish()
+            result
         }
     }
 
@@ -353,54 +404,69 @@ class ModelDownloader(
         onProgress: (Float) -> Unit,
         minTokensBytes: Long = MIN_ONNX_TOKENS_BYTES,
     ): Result {
+        val progress = AggregateProgress(onProgress)
         val modelTarget = java.io.File(baseDir, entry.model.fileName)
         if (modelTarget.exists() && modelTarget.length() >= MIN_DOLPHIN_MODEL_BYTES) {
-            ensureTokens(entry, modelUrl, tokensName, minTokensBytes)
-            ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES)
-            onProgress(1f)
+            ensureTokens(entry, modelUrl, tokensName, minTokensBytes, progress)
+            ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES, progress)
+            progress.finish()
             return Result.Success(modelTarget.length())
         }
 
         val modelTmp = java.io.File(baseDir, "${entry.model.fileName}.part")
-        val connection = URL(modelUrl).openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            connection.connect()
-            val code = connection.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
-                return httpFailure(code, modelUrl)
+        return coroutineScope {
+            // Fetch the tokens + VAD siblings concurrently with the model file so
+            // every Content-Length registers up front and the percentage stays
+            // monotonic across the whole download.
+            val siblingsDeferred = async {
+                ensureTokens(entry, modelUrl, tokensName, minTokensBytes, progress)
+                ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES, progress)
             }
-            val total = connection.contentLengthLong
-            var downloaded = 0L
-            modelTarget.parentFile?.mkdirs()
+            val result = try {
+                val connection = URL(modelUrl).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 15_000
+                    connection.readTimeout = 30_000
+                    connection.connect()
+                    val code = connection.responseCode
+                    if (code != HttpURLConnection.HTTP_OK) {
+                        httpFailure(code, modelUrl)
+                    } else {
+                        progress.addFile(connection.contentLengthLong)
+                        var downloaded = 0L
+                        modelTarget.parentFile?.mkdirs()
 
-            connection.inputStream.use { input ->
-                modelTmp.outputStream().use { out ->
-                    val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buf)
-                        if (read == -1) break
-                        out.write(buf, 0, read)
-                        downloaded += read
-                        if (total > 0) onProgress(downloaded.toFloat() / total)
+                        connection.inputStream.use { input ->
+                            modelTmp.outputStream().use { out ->
+                                val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                                while (true) {
+                                    val read = input.read(buf)
+                                    if (read == -1) break
+                                    out.write(buf, 0, read)
+                                    downloaded += read.toLong()
+                                    progress.addDownloaded(read.toLong())
+                                }
+                            }
+                        }
+
+                        if (modelTmp.renameTo(modelTarget)) {
+                            modelTmp.delete()
+                            Result.Success(downloaded)
+                        } else {
+                            modelTmp.delete()
+                            Result.Failure("rename failed")
+                        }
                     }
+                } finally {
+                    connection.disconnect()
                 }
-            }
-
-            if (modelTmp.renameTo(modelTarget)) {
+            } catch (e: Exception) {
                 modelTmp.delete()
-                ensureTokens(entry, modelUrl, tokensName)
-                ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES)
-                onProgress(1f)
-                return Result.Success(downloaded)
+                Result.Failure(e.message ?: e.toString())
             }
-            return Result.Failure("rename failed")
-        } catch (e: Exception) {
-            modelTmp.delete()
-            return Result.Failure(e.message ?: e.toString())
-        } finally {
-            connection.disconnect()
+            siblingsDeferred.await()
+            progress.finish()
+            result
         }
     }
 
@@ -416,61 +482,77 @@ class ModelDownloader(
     ): Result {
         val url = entry.onnxSourceUrl
             ?: return Result.Failure("No ONNX URL for model ${entry.model.id}")
+        val progress = AggregateProgress(onProgress)
         val encoderTarget = java.io.File(baseDir, dolphinAttnEncoderName(entry))
         if (encoderTarget.exists() && encoderTarget.length() >= MIN_ATTN_ENC_DEC_BYTES) {
-            ensureDolphinAttnSiblings(entry, url)
-            onProgress(1f)
+            ensureDolphinAttnSiblings(entry, url, progress)
+            progress.finish()
             return Result.Success(encoderTarget.length())
         }
 
         val encoderTmp = java.io.File(baseDir, "${dolphinAttnEncoderName(entry)}.part")
-        val connection = URL(url).openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = 15_000
-            connection.readTimeout = 30_000
-            connection.connect()
-            val code = connection.responseCode
-            if (code != HttpURLConnection.HTTP_OK) {
-                return httpFailure(code, url)
-            }
-            val total = connection.contentLengthLong
-            var downloaded = 0L
-            encoderTarget.parentFile?.mkdirs()
+        return coroutineScope {
+            // Stream the decoder/units/VAD siblings concurrently with the encoder so
+            // the aggregate percentage stays monotonic across the whole download.
+            val siblingsDeferred = async { ensureDolphinAttnSiblings(entry, url, progress) }
+            val result = try {
+                val connection = URL(url).openConnection() as HttpURLConnection
+                try {
+                    connection.connectTimeout = 15_000
+                    connection.readTimeout = 30_000
+                    connection.connect()
+                    val code = connection.responseCode
+                    if (code != HttpURLConnection.HTTP_OK) {
+                        httpFailure(code, url)
+                    } else {
+                        progress.addFile(connection.contentLengthLong)
+                        var downloaded = 0L
+                        encoderTarget.parentFile?.mkdirs()
 
-            connection.inputStream.use { input ->
-                encoderTmp.outputStream().use { out ->
-                    val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-                    while (true) {
-                        val read = input.read(buf)
-                        if (read == -1) break
-                        out.write(buf, 0, read)
-                        downloaded += read
-                        if (total > 0) onProgress(downloaded.toFloat() / total)
+                        connection.inputStream.use { input ->
+                            encoderTmp.outputStream().use { out ->
+                                val buf = ByteArray(DEFAULT_BUFFER_SIZE)
+                                while (true) {
+                                    val read = input.read(buf)
+                                    if (read == -1) break
+                                    out.write(buf, 0, read)
+                                    downloaded += read.toLong()
+                                    progress.addDownloaded(read.toLong())
+                                }
+                            }
+                        }
+
+                        if (encoderTmp.renameTo(encoderTarget)) {
+                            encoderTmp.delete()
+                            Result.Success(downloaded)
+                        } else {
+                            encoderTmp.delete()
+                            Result.Failure("rename failed")
+                        }
                     }
+                } finally {
+                    connection.disconnect()
                 }
-            }
-
-            if (encoderTmp.renameTo(encoderTarget)) {
+            } catch (e: Exception) {
                 encoderTmp.delete()
-                ensureDolphinAttnSiblings(entry, url)
-                onProgress(1f)
-                return Result.Success(downloaded)
+                Result.Failure(e.message ?: e.toString())
             }
-            return Result.Failure("rename failed")
-        } catch (e: Exception) {
-            encoderTmp.delete()
-            return Result.Failure(e.message ?: e.toString())
-        } finally {
-            connection.disconnect()
+            siblingsDeferred.await()
+            progress.finish()
+            result
         }
     }
 
     /** Ensure the decoder.onnx + units.txt (+ shared silero_vad.onnx) siblings exist. */
-    private suspend fun ensureDolphinAttnSiblings(entry: CatalogEntry, encoderUrl: String) {
+    private suspend fun ensureDolphinAttnSiblings(
+        entry: CatalogEntry,
+        encoderUrl: String,
+        progress: AggregateProgress,
+    ) {
         val (decoderGot, unitsGot, vadGot) = coroutineScope {
-            val decoderDeferred = async { ensureDolphinAttnSibling(dolphinAttnDecoderUrl(encoderUrl), dolphinAttnDecoderName(entry), MIN_ATTN_ENC_DEC_BYTES) }
-            val unitsDeferred = async { ensureDolphinAttnSibling(dolphinAttnUnitsUrl(encoderUrl), dolphinAttnUnitsName(), MIN_ATTN_UNITS_BYTES) }
-            val vadDeferred = async { ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES) }
+            val decoderDeferred = async { ensureDolphinAttnSibling(dolphinAttnDecoderUrl(encoderUrl), dolphinAttnDecoderName(entry), MIN_ATTN_ENC_DEC_BYTES, progress) }
+            val unitsDeferred = async { ensureDolphinAttnSibling(dolphinAttnUnitsUrl(encoderUrl), dolphinAttnUnitsName(), MIN_ATTN_UNITS_BYTES, progress) }
+            val vadDeferred = async { ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES, progress) }
             Triple(decoderDeferred.await(), unitsDeferred.await(), vadDeferred.await())
         }
         if (!(decoderGot && unitsGot && vadGot)) {
@@ -483,95 +565,26 @@ class ModelDownloader(
         siblingUrl: String,
         outName: String,
         minBytes: Long,
-    ): Boolean {
-        val targetFile = java.io.File(baseDir, outName)
-        if (targetFile.exists() && targetFile.length() >= minBytes) return true
-        if (targetFile.exists()) {
-            Log.w(TAG, "discarding undersized $outName (${targetFile.length()} bytes)")
-            targetFile.delete()
-        }
-        val tmp = java.io.File(baseDir, "$outName.part")
-        try {
-            val connection = URL(siblingUrl).openConnection() as HttpURLConnection
-            var ok = false
-            try {
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
-                connection.connect()
-                val code = connection.responseCode
-                if (code != HttpURLConnection.HTTP_OK) return false
-                connection.inputStream.use { input ->
-                    targetFile.parentFile?.mkdirs()
-                    tmp.outputStream().use { out ->
-                        val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val read = input.read(buf)
-                            if (read == -1) break
-                            out.write(buf, 0, read)
-                        }
-                    }
-                }
-                ok = tmp.renameTo(targetFile)
-            } finally {
-                connection.disconnect()
-            }
-            if (!ok) tmp.delete()
-            return ok && targetFile.exists() && targetFile.length() >= minBytes
-        } catch (e: Exception) {
-            tmp.delete()
-            Log.w(TAG, "dolphin attention sibling download failed for $outName from $siblingUrl: ${e.message}")
-            return false
-        }
-    }
+        progress: AggregateProgress? = null,
+    ): Boolean =
+        downloadFile(siblingUrl, outName, minBytes, progress, "attention sibling")
 
     /**
      * Best-effort download of a single-model catalog entry's sibling `tokens.txt`,
      * derived from the model URL by swapping `model.onnx`/`model.int8.onnx` → `tokens.txt`.
      * Returns true if the file is present afterwards (already there or newly fetched).
      */
-    private fun ensureTokens(entry: CatalogEntry, modelUrl: String, tokensName: String, minTokensBytes: Long = MIN_ONNX_TOKENS_BYTES): Boolean {
-        val targetFile = java.io.File(baseDir, tokensName)
-        if (targetFile.exists() && targetFile.length() >= minTokensBytes) return true
-        if (targetFile.exists()) {
-            Log.w(TAG, "discarding undersized $tokensName (${targetFile.length()} bytes)")
-            targetFile.delete()
-        }
+    private fun ensureTokens(
+        entry: CatalogEntry,
+        modelUrl: String,
+        tokensName: String,
+        minTokensBytes: Long = MIN_ONNX_TOKENS_BYTES,
+        progress: AggregateProgress? = null,
+    ): Boolean {
         val int8 = modelUrl.endsWith("model.int8.onnx")
         val base = if (int8) modelUrl.substringBefore("model.int8.onnx")
             else modelUrl.substringBefore("model.onnx")
-        val tokensUrl = base + "tokens.txt"
-        val tmp = java.io.File(baseDir, "$tokensName.part")
-        try {
-            val connection = URL(tokensUrl).openConnection() as HttpURLConnection
-            var ok = false
-            try {
-                connection.connectTimeout = 15_000
-                connection.readTimeout = 30_000
-                connection.connect()
-                val code = connection.responseCode
-                if (code != HttpURLConnection.HTTP_OK) return false
-                connection.inputStream.use { input ->
-                    targetFile.parentFile?.mkdirs()
-                    tmp.outputStream().use { out ->
-                        val buf = ByteArray(DEFAULT_BUFFER_SIZE)
-                        while (true) {
-                            val read = input.read(buf)
-                            if (read == -1) break
-                            out.write(buf, 0, read)
-                        }
-                    }
-                }
-                ok = tmp.renameTo(targetFile)
-            } finally {
-                connection.disconnect()
-            }
-            if (!ok) tmp.delete()
-            return ok && targetFile.exists() && targetFile.length() >= minTokensBytes
-        } catch (e: Exception) {
-            tmp.delete()
-            Log.w(TAG, "tokens download failed for $tokensName from $tokensUrl: ${e.message}")
-            return false
-        }
+        return downloadFile(base + "tokens.txt", tokensName, minTokensBytes, progress, "tokens")
     }
 
     /**
@@ -581,11 +594,15 @@ class ModelDownloader(
      * a failure rather than silently ignored. The siblings are downloaded concurrently
      * to cut total download time.
      */
-    private suspend fun ensureSiblings(entry: CatalogEntry, encoderUrl: String) {
+    private suspend fun ensureSiblings(
+        entry: CatalogEntry,
+        encoderUrl: String,
+        progress: AggregateProgress,
+    ) {
         val (decoderGot, tokensGot, vadGot) = coroutineScope {
-            val decoderDeferred = async { ensureSibling(encoderUrl, "decoder", onnxDecoderName(entry)) }
-            val tokensDeferred = async { ensureSibling(encoderUrl, "tokens", onnxTokensName(entry)) }
-            val vadDeferred = async { ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES) }
+            val decoderDeferred = async { ensureSibling(encoderUrl, "decoder", onnxDecoderName(entry), progress) }
+            val tokensDeferred = async { ensureSibling(encoderUrl, "tokens", onnxTokensName(entry), progress) }
+            val vadDeferred = async { ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES, progress) }
             Triple(decoderDeferred.await(), tokensDeferred.await(), vadDeferred.await())
         }
         if (!(decoderGot && tokensGot && vadGot)) {
@@ -604,16 +621,8 @@ class ModelDownloader(
         encoderUrl: String,
         target: String,
         outName: String,
+        progress: AggregateProgress? = null,
     ): Boolean {
-        val targetFile = java.io.File(baseDir, outName)
-        val isTokens = target == "tokens"
-        val minBytes = if (isTokens) MIN_ONNX_TOKENS_BYTES else MIN_ONNX_DECODER_BYTES
-        if (targetFile.exists() && targetFile.length() >= minBytes) return true
-        if (targetFile.exists()) {
-            // Existing file is stale/undersized; drop it so the fresh copy below lands.
-            Log.w(TAG, "discarding undersized $outName (${targetFile.length()} bytes)")
-            targetFile.delete()
-        }
         val int8 = encoderUrl.contains("-encoder.int8.onnx")
         val base = if (int8) encoderUrl.substringBefore("-encoder.int8.onnx")
             else encoderUrl.substringBefore("-encoder.onnx")
@@ -621,9 +630,32 @@ class ModelDownloader(
             "decoder" -> base + if (int8) "-decoder.int8.onnx" else "-decoder.onnx"
             else -> base + "-tokens.txt"
         }
+        val minBytes = if (target == "tokens") MIN_ONNX_TOKENS_BYTES else MIN_ONNX_DECODER_BYTES
+        return downloadFile(siblingUrl, outName, minBytes, progress, "sibling")
+    }
+
+    /**
+     * Stream one remote file into [baseDir]/[outName] (via a `.part` temp + rename),
+     * feeding its bytes into [progress] so a multi-file download reports overall
+     * progress. Returns true if the target exists with at least [minBytes] afterwards
+     * (skips the fetch if it already does). [logTag] names the file in log messages.
+     */
+    private fun downloadFile(
+        url: String,
+        outName: String,
+        minBytes: Long,
+        progress: AggregateProgress?,
+        logTag: String,
+    ): Boolean {
+        val targetFile = java.io.File(baseDir, outName)
+        if (targetFile.exists() && targetFile.length() >= minBytes) return true
+        if (targetFile.exists()) {
+            Log.w(TAG, "discarding undersized $outName (${targetFile.length()} bytes)")
+            targetFile.delete()
+        }
         val tmp = java.io.File(baseDir, "$outName.part")
         try {
-            val connection = URL(siblingUrl).openConnection() as HttpURLConnection
+            val connection = URL(url).openConnection() as HttpURLConnection
             var ok = false
             try {
                 connection.connectTimeout = 15_000
@@ -631,6 +663,7 @@ class ModelDownloader(
                 connection.connect()
                 val code = connection.responseCode
                 if (code != HttpURLConnection.HTTP_OK) return false
+                progress?.addFile(connection.contentLengthLong)
                 // Stream in chunks rather than buffering the whole file: the
                 // decoder for large models is many hundreds of MB and buffering
                 // it all in one ByteArray would OOM the VM.
@@ -642,6 +675,7 @@ class ModelDownloader(
                             val read = input.read(buf)
                             if (read == -1) break
                             out.write(buf, 0, read)
+                            progress?.addDownloaded(read.toLong())
                         }
                     }
                 }
@@ -653,7 +687,7 @@ class ModelDownloader(
             return ok && targetFile.exists() && targetFile.length() >= minBytes
         } catch (e: Exception) {
             tmp.delete()
-            Log.w(TAG, "sibling download failed for $outName from $siblingUrl: ${e.message}")
+            Log.w(TAG, "$logTag download failed for $outName from $url: ${e.message}")
             return false
         }
     }
