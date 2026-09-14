@@ -3,7 +3,6 @@ package dev.femustafa.voicedictation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
@@ -19,7 +18,6 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
@@ -33,9 +31,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-
-/** Quick-pick language chips on the onboarding screen ([LanguageOnboardingScreen]). */
-private val QUICK_LANGUAGES = listOf("en" to "English", "ur" to "Urdu")
 
 /**
  * First-run screen: asks the user which language they plan to dictate in and,
@@ -98,27 +93,13 @@ fun LanguageOnboardingScreen(
         )
 
         Spacer(modifier = Modifier.height(20.dp))
-        Text(text = "Quick pick", style = MaterialTheme.typography.titleSmall)
-        Spacer(modifier = Modifier.height(8.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            QUICK_LANGUAGES.forEach { (code, name) ->
-                FilterChip(
-                    selected = selected == code,
-                    onClick = {
-                        selected = code
-                        onLanguageChange(code)
-                    },
-                    label = { Text(name) },
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-        LanguagePicker(
+        SearchableLanguageDropdown(
             selectedCode = selected,
-            onSelect = {
-                selected = it
-                onLanguageChange(it)
+            onSelect = { code ->
+                if (code != null) {
+                    selected = code
+                    onLanguageChange(code)
+                }
             },
             modifier = Modifier.fillMaxWidth(),
         )
@@ -168,50 +149,6 @@ fun LanguageOnboardingScreen(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text("Continue")
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LanguagePicker(
-    selectedCode: String?,
-    onSelect: (String) -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    val label = selectedCode?.let { code ->
-        val name = WhisperLanguages.nameOf(code)
-        if (name != null) "$name ($code)" else code
-    } ?: "Choose a language"
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-        modifier = modifier,
-    ) {
-        OutlinedTextField(
-            value = label,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Language") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            WhisperLanguages.entries.forEach { (code, name) ->
-                DropdownMenuItem(
-                    text = { Text("$name ($code)") },
-                    onClick = {
-                        expanded = false
-                        onSelect(code)
-                    },
-                )
-            }
         }
     }
 }

@@ -138,8 +138,9 @@ fun AdvancedSettingsSheet(
                 )
             }
 
-            LanguagePicker(
+            SearchableLanguageDropdown(
                 selectedCode = languageCode,
+                includeAutoDetect = true,
                 onSelect = { code ->
                     viewModel.setLanguageCode(code)
                     // The recommended model for the new language becomes the default
@@ -318,55 +319,6 @@ fun AdvancedSettingsSheet(
                 }
             },
         )
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-private fun LanguagePicker(
-    selectedCode: String?,
-    onSelect: (String?) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    val label = selectedCode?.let { code ->
-        val name = WhisperLanguages.nameOf(code)
-        if (name != null) "$name ($code)" else code
-    } ?: "Auto-detect"
-
-    ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = it },
-    ) {
-        OutlinedTextField(
-            value = label,
-            onValueChange = {},
-            readOnly = true,
-            label = { Text("Language") },
-            trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expanded) },
-            modifier = Modifier.menuAnchor(MenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
-        )
-        ExposedDropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            DropdownMenuItem(
-                text = { Text("Auto-detect") },
-                onClick = {
-                    expanded = false
-                    onSelect(null)
-                },
-            )
-            WhisperLanguages.entries.forEach { (code, name) ->
-                DropdownMenuItem(
-                    text = { Text("$name ($code)") },
-                    onClick = {
-                        expanded = false
-                        onSelect(code)
-                    },
-                )
-            }
-        }
     }
 }
 
