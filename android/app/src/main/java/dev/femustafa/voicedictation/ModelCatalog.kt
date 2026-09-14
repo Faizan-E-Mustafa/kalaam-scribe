@@ -625,14 +625,17 @@ val CatalogEntry.modelName: String
  *   synthetic [WhisperLanguages.URDU_ROMAN] code only — never `ur` (which yields
  *   native-script Urdu models like Dolphin).
  * - English-only whisper models transcribe `en` only.
- * - Multilingual whisper models support every [WhisperLanguages] entry.
+ * - Multilingual whisper models support every [WhisperLanguages] entry except
+ *   `en`: for English the picker only offers the dedicated English-only tier
+ *   (`.en` models are strictly more accurate/faster for English), so multilingual
+ *   entries are hidden from the model list when English is selected.
  */
 fun CatalogEntry.supportsLanguage(code: String): Boolean = when {
     ModelCatalog.isDolphinAttn(this) -> code in ModelCatalog.DOLPHIN_LANGUAGES
     ModelCatalog.isOmnilingual(this) -> WhisperLanguages.supports(code)
     model.languageMode == LanguageMode.RomanUrdu -> code == WhisperLanguages.URDU_ROMAN
     model.languageMode == LanguageMode.English -> code == "en"
-    else -> WhisperLanguages.supports(code)
+    else -> code != "en" && WhisperLanguages.supports(code)
 }
 
 /**

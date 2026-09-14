@@ -370,9 +370,11 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun multilingualModelsSupportEveryWhisperLanguage() {
+    fun multilingualModelsSupportEveryWhisperLanguageExceptEnglish() {
         val ml = ModelCatalog.byId("small-int8")!!
-        assertTrue(ml.supportsLanguage("en"))
+        // For English the picker only offers the dedicated English-only tier, so
+        // multilingual whisper models are hidden when English is selected.
+        assertFalse(ml.supportsLanguage("en"))
         assertTrue(ml.supportsLanguage("ur"))
         assertTrue(ml.supportsLanguage("hi"))
         assertTrue(ml.supportsLanguage("haw"))
@@ -421,7 +423,9 @@ class ModelCatalogTest {
 
         val englishIds = ModelCatalog.activeCatalog.filterForLanguage("en").map { it.model.id }.toSet()
         assertTrue(englishIds.contains("small.en-int8"))
-        assertTrue(englishIds.contains("small-int8"))
+        // Multilingual whisper models are hidden for English: only the dedicated
+        // English-only tier (.en) is offered.
+        assertFalse(englishIds.contains("small-int8"))
         assertFalse(englishIds.any { it.startsWith("roman-urdu") })
         // Dolphin is advertised for Urdu only, so it must not appear for English.
         assertFalse(englishIds.any { it.startsWith("dolphin-") })
