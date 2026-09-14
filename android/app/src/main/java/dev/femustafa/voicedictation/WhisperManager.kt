@@ -78,9 +78,11 @@ class WhisperManager(
         val model = ensureLoaded() ?: error("no resident model to transcribe")
         val resident = residentModel!!
         val languageMode = resident.languageMode
-        // A user code may override only multilingual (non-Roman-Urdu) Models.
+        // A user code may override only multilingual (non-Roman-Urdu) Models, and only
+        // when it is a real whisper engine code (the synthetic "Urdu (Roman)" code is
+        // never passed down — Roman-Urdu models run their fixed-English mode).
         val language = resident.canOverrideLanguage.takeIf { it }?.let {
-            _languageCode.value
+            _languageCode.value?.takeIf { code -> WhisperLanguages.supports(code) }
         }
         _status.value = Status.Transcribing
         try {
@@ -115,9 +117,10 @@ class WhisperManager(
                 val resident = residentModel!!
                 val languageMode = resident.languageMode
                 // Same language resolution as [doTranscribe]: only multilingual Models
-                // take the user-selected code.
+                // take the user-selected code (and only real whisper codes; the synthetic
+                // "Urdu (Roman)" code is never passed to an engine).
                 val language = resident.canOverrideLanguage.takeIf { it }?.let {
-                    _languageCode.value
+                    _languageCode.value?.takeIf { code -> WhisperLanguages.supports(code) }
                 }
                 engine.createSession(ref, languageMode, language)
             }

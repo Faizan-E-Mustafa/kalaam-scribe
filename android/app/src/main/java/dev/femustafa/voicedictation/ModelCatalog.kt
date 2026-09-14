@@ -552,12 +552,14 @@ object ModelCatalog {
      * "Recommended" pick and the model picker's default highlight:
      * - `en` → English · Balanced (`base.en-int8`)
      * - `ur` → Dolphin · Balanced (`dolphin-attn-base`, fp16/arm)
+     * - [WhisperLanguages.URDU_ROMAN] → Roman-Urdu · `roman-urdu-int8`
      * - any other language (multilingual tier covers them all) → Multilingual ·
      *   Balanced (`base-int8`), also the pick for Auto-detect.
      */
     fun recommendedForLanguage(code: String?): CatalogEntry? = when (code) {
         "en" -> byActiveId("base.en-int8")
         "ur" -> byActiveId("dolphin-attn-base")
+        WhisperLanguages.URDU_ROMAN -> byActiveId("roman-urdu-int8")
         else -> byActiveId("base-int8")
     }
 
@@ -619,14 +621,16 @@ val CatalogEntry.modelName: String
  * - Dolphin attention models support their [ModelCatalog.DOLPHIN_LANGUAGES].
  * - Omnilingual auto-detects from 1600+ zero-shot languages (no way to pin an
  *   output language in sherpa-onnx), so it passes every [WhisperLanguages] code.
- * - Roman-Urdu models transcribe Urdu (roman/Latin script), so `ur` only.
+ * - Roman-Urdu models transcribe Urdu in roman/Latin script, so they match the
+ *   synthetic [WhisperLanguages.URDU_ROMAN] code only — never `ur` (which yields
+ *   native-script Urdu models like Dolphin).
  * - English-only whisper models transcribe `en` only.
  * - Multilingual whisper models support every [WhisperLanguages] entry.
  */
 fun CatalogEntry.supportsLanguage(code: String): Boolean = when {
     ModelCatalog.isDolphinAttn(this) -> code in ModelCatalog.DOLPHIN_LANGUAGES
     ModelCatalog.isOmnilingual(this) -> WhisperLanguages.supports(code)
-    model.languageMode == LanguageMode.RomanUrdu -> code == "ur"
+    model.languageMode == LanguageMode.RomanUrdu -> code == WhisperLanguages.URDU_ROMAN
     model.languageMode == LanguageMode.English -> code == "en"
     else -> WhisperLanguages.supports(code)
 }

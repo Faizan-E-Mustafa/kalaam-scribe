@@ -133,6 +133,7 @@ class ModelCatalogTest {
     fun recommendedForLanguagePicksBalancedModelsPerLanguage() {
         assertEquals("base.en-int8", ModelCatalog.recommendedForLanguage("en")!!.model.id)
         assertEquals("dolphin-attn-base", ModelCatalog.recommendedForLanguage("ur")!!.model.id)
+        assertEquals("roman-urdu-int8", ModelCatalog.recommendedForLanguage(WhisperLanguages.URDU_ROMAN)!!.model.id)
         // Every other language (and Auto-detect) falls back to Multilingual · Balanced.
         assertEquals("base-int8", ModelCatalog.recommendedForLanguage("hi")!!.model.id)
         assertEquals("base-int8", ModelCatalog.recommendedForLanguage("haw")!!.model.id)
@@ -142,7 +143,7 @@ class ModelCatalogTest {
 
     @Test
     fun recommendedForLanguageAlwaysSupportsTheRequestedLanguage() {
-        for (code in listOf("en", "ur", "hi", "haw", "de", null)) {
+        for (code in listOf("en", "ur", WhisperLanguages.URDU_ROMAN, "hi", "haw", "de", null)) {
             val rec = ModelCatalog.recommendedForLanguage(code)!!
             assertTrue("recommended ${rec.model.id} must be active", rec in ModelCatalog.activeCatalog)
             if (code != null) {
@@ -379,9 +380,12 @@ class ModelCatalogTest {
     }
 
     @Test
-    fun romanUrduModelsSupportOnlyUrdu() {
+    fun romanUrduModelsSupportOnlyRomanUrdu() {
         val ru = ModelCatalog.byId("roman-urdu-int8")!!
-        assertTrue(ru.supportsLanguage("ur"))
+        // Roman-Urdu models belong to the synthetic "Urdu (Roman)" language, never to
+        // `ur` (which advertises native-script Urdu models like Dolphin).
+        assertTrue(ru.supportsLanguage(WhisperLanguages.URDU_ROMAN))
+        assertFalse(ru.supportsLanguage("ur"))
         assertFalse(ru.supportsLanguage("en"))
         assertFalse(ru.supportsLanguage("hi"))
     }
@@ -405,9 +409,15 @@ class ModelCatalogTest {
     @Test
     fun filterForLanguageRestrictsActiveCatalog() {
         val urduIds = ModelCatalog.activeCatalog.filterForLanguage("ur").map { it.model.id }.toSet()
-        assertTrue(urduIds.containsAll(setOf("roman-urdu-int8", "roman-urdu-fp32", "small-int8", "dolphin-attn-small")))
+        // `ur` advertises the native-script Urdu models (dolphin + multilingual tier),
+        // but no Roman-Urdu model — those moved to the "Urdu (Roman)" language.
+        assertTrue(urduIds.containsAll(setOf("small-int8", "dolphin-attn-small")))
+        assertFalse(urduIds.any { it.startsWith("roman-urdu") })
         // No English-only whisper model is shown for Urdu.
         assertFalse(urduIds.any { it.contains(".en") })
+
+        val romanUrduIds = ModelCatalog.activeCatalog.filterForLanguage(WhisperLanguages.URDU_ROMAN).map { it.model.id }.toSet()
+        assertEquals(setOf("roman-urdu-fp32", "roman-urdu-int8"), romanUrduIds)
 
         val englishIds = ModelCatalog.activeCatalog.filterForLanguage("en").map { it.model.id }.toSet()
         assertTrue(englishIds.contains("small.en-int8"))

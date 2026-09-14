@@ -88,12 +88,22 @@ fun isRomanUrdu(modelId: String): Boolean =
         modelId == "roman-urdu-fp32" || modelId == "roman-urdu-int8"
 
 /**
- * The languages the whisper AAR supports for `WhisperConfig.language`.
- * Mirrors `openai/whisper` `tokenizer.py` `LANGUAGES` (99 entries): each is a
- * 2-letter code plus its English name. Use these codes directly; a null/blank
- * selection means auto-detect (`"auto"`).
+ * The languages shown in the language dropdowns. Mirrors the whisper AAR's
+ * `WhisperConfig.language` codes from `openai/whisper` `tokenizer.py` `LANGUAGES`
+ * (99 entries): each is a 2-letter code plus its English name. Use these codes
+ * directly; a null/blank selection means auto-detect (`"auto"`).
+ *
+ * One extra, synthetic entry is appended: [URDU_ROMAN] ("Urdu (Roman)"). It is
+ * NOT a real whisper code — it only selects the Roman-Urdu catalog in the
+ * dropdowns, never reaches an engine (Roman-Urdu models run their fixed-English
+ * [LanguageMode.RomanUrdu] mode), and is excluded from [supports] so multilingual
+ * /omnilingual models don't claim it. It still appears in [entries]/[nameOf] and
+ * sorts next to "Urdu".
  */
 object WhisperLanguages {
+    /** Synthetic code for Roman-script Urdu; see the [WhisperLanguages] doc. */
+    const val URDU_ROMAN = "ur-roman"
+
     /** Alphabetical by English name; used to fill the onboarding and picker dropdowns. */
     val entries: List<Pair<String, String>> = listOf(
         "en" to "English", "zh" to "Chinese", "de" to "German", "es" to "Spanish",
@@ -121,11 +131,13 @@ object WhisperLanguages {
         "bo" to "Tibetan", "tl" to "Tagalog", "mg" to "Malagasy", "as" to "Assamese",
         "tt" to "Tatar", "haw" to "Hawaiian", "ln" to "Lingala", "ha" to "Hausa",
         "ba" to "Bashkir", "jw" to "Javanese", "su" to "Sundanese", "yue" to "Cantonese",
+        URDU_ROMAN to "Urdu (Roman)",
     ).sortedBy { it.second }
 
     private val byCode: Map<String, String> = entries.toMap()
 
     fun nameOf(code: String): String? = byCode[code]
 
-    fun supports(code: String): Boolean = byCode.containsKey(code)
+    /** Whether [code] is a real whisper engine language code (not the synthetic [URDU_ROMAN]). */
+    fun supports(code: String): Boolean = byCode.containsKey(code) && code != URDU_ROMAN
 }

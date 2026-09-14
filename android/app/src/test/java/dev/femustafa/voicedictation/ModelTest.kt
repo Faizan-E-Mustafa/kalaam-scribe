@@ -14,13 +14,28 @@ class ModelTest {
 
     @Test
     fun whisperLanguagesHasAllSupportedCodes() {
-        // whisper's LANGUAGES table (openai/whisper tokenizer.py) has 100 codes.
-        assertEquals(100, WhisperLanguages.entries.size)
+        // whisper's LANGUAGES table (openai/whisper tokenizer.py) has 100 codes,
+        // plus the synthetic (non-engine) "Urdu (Roman)" entry.
+        assertEquals(101, WhisperLanguages.entries.size)
         // A few representative entries present.
         assertEquals("English", WhisperLanguages.nameOf("en"))
         assertEquals("German", WhisperLanguages.nameOf("de"))
         assertEquals("Hindi", WhisperLanguages.nameOf("hi"))
         assertEquals("Urdu", WhisperLanguages.nameOf("ur"))
+    }
+
+    @Test
+    fun urduRomanIsSyntheticAndSortsNextToUrdu() {
+        assertNull(WhisperLanguages.nameOf("xx"))
+        // Synthetic entry exists for the dropdowns and names...
+        assertEquals("Urdu (Roman)", WhisperLanguages.nameOf(WhisperLanguages.URDU_ROMAN))
+        // ...but it is not a real whisper engine code (multilingual/omnilingual
+        // models must not claim it, and it must never reach an engine).
+        assertFalse(WhisperLanguages.supports(WhisperLanguages.URDU_ROMAN))
+        // Sorts alphabetically right after "Urdu".
+        val urdu = WhisperLanguages.entries.indexOfFirst { it.first == "ur" }
+        val roman = WhisperLanguages.entries.indexOfFirst { it.first == WhisperLanguages.URDU_ROMAN }
+        assertEquals(urdu + 1, roman)
     }
 
     @Test
