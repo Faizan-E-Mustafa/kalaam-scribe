@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
@@ -74,7 +75,7 @@ fun AdvancedSettingsSheet(
     val context = LocalContext.current
     val app = VoiceDictationApp.from(context)
 
-    val sheetState = rememberModalBottomSheetState()
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val scope = rememberCoroutineScope()
     fun dismiss() {
         scope.launch { sheetState.hide() }.invokeOnCompletion { onClose() }
@@ -138,7 +139,7 @@ fun AdvancedSettingsSheet(
                 )
             }
 
-            SearchableLanguageDropdown(
+            InlineLanguageSearch(
                 selectedCode = languageCode,
                 includeAutoDetect = true,
                 onSelect = { code ->
@@ -438,5 +439,122 @@ private fun CompactSlider(
             steps = steps,
             modifier = Modifier.weight(0.55f),
         )
+    }
+}
+
+/**
+ * Searchable language picker for the settings sheet. Unlike the popup-based
+ * [SearchableLanguageDropdown] used on onboarding, the matching languages render
+ * inline below the field inside the sheet's scrollable column, so the keyboard
+ * (via the sheet's ime/safeDrawing padding) can never cover the input box while
+ * typing. Selecting a row collapses the list back down.
+ */
+@Composable
+private fun InlineLanguageSearch(
+    selectedCode: String?,
+    includeAutoDetect: Boolean,
+    onSelect: (String?) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+
+    val selection = selectedCode?.let { code ->
+        val name = WhisperLanguages.nameOf(code)
+        if (name != null) "$name ($code)" else code
+    } ?: if (includeAutoDetect) "Auto-detect" else ""
+
+    val value = if (expanded) query else selection
+
+    val filtered = remember(query) {
+        if (query.isBlank()) WhisperLanguages.entries
+        else WhisperLanguages.entries.filter { (code, name) ->
+            code.contains(query, ignoreCase = true) || name.contains(query, ignoreCase = true)
+        }
+    }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = {
+                query = it
+                expanded = true
+            },
+            label = { Text("Language") },
+            singleLine = true,
+            trailingIcon = {
+                IconButton(onClick = { expanded = !expanded }) {
+                    Icon(
+                        imageVector = Icons.Filled.ArrowDropDown,
+                        contentDescription = if (expanded) "Collapse language list" else "Expand language list",
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+
+        if (expanded) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 280.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(vertical = 4.dp),
+            ) {
+                if (includeAutoDetect) {
+                    LanguageRow(
+                        label = "Auto-detect",
+                        selected = selectedCode == null,
+                        onClick = {
+                            expanded = false
+                            query = ""
+                            onSelect(null)
+                        },
+                    )
+                }
+                filtered.forEach { (code, name) ->
+                    LanguageRow(
+                        label = "$name ($code)",
+                        selected = code == selectedCode,
+                        onClick = {
+                            expanded = false
+                            query = ""
+                            onSelect(code)
+                        },
+                    )
+                }
+                if (query.isNotBlank() && filtered.isEmpty()) {
+                    Text(
+                        text = "No languages match \"$query\"",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(vertical = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LanguageRow(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(text = label, modifier = Modifier.weight(1f))
+        if (selected) {
+            Icon(
+                imageVector = Icons.Filled.Check,
+                contentDescription = "Selected",
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
