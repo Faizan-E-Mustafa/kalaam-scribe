@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -79,6 +81,9 @@ fun AdvancedSettingsSheet(
     }
 
     var advancedExpanded by remember { mutableStateOf(false) }
+    // Set when the language changes to a recommended model that isn't downloaded
+    // yet; drives the "download the recommended model" confirmation dialog.
+    var pendingDownload by remember { mutableStateOf<CatalogEntry?>(null) }
 
     var selectedThreads by remember { mutableStateOf(app.whisperThreads()) }
     var transcriptionMode by remember { mutableStateOf(app.transcriptionMode) }
@@ -95,10 +100,13 @@ fun AdvancedSettingsSheet(
     val languageCode by viewModel.languageCode.collectAsState()
 
     // Only list Models that support the selected language; Auto-detect (null)
-    // shows the whole catalog. Recomputes live when the language dropdown changes.
+    // shows the whole catalog. The catalog's recommended model for the language
+    // is pinned first and badged, matching the onboarding list.
     val code = languageCode
-    val visible = remember(state, code) {
-        if (code == null) state else state.filter { (entry, _) -> entry.supportsLanguage(code) }
+    val recommended = ModelCatalog.recommendedForLanguage(code)
+    val visible = remember(state, code, recommended) {
+        (if (code == null) state else state.filter { (entry, _) -> entry.supportsLanguage(code) })
+            .sortedWith(compareByDescending { it.first.model.id == recommended?.model?.id })
     }
 
     ModalBottomSheet(
@@ -132,7 +140,13 @@ fun AdvancedSettingsSheet(
 
             LanguagePicker(
                 selectedCode = languageCode,
-                onSelect = viewModel::setLanguageCode,
+                onSelect = { code ->
+                    viewModel.setLanguageCode(code)
+                    // The recommended model for the new language becomes the default
+                    // selection; if it isn't downloaded yet, ask the user to grab it.
+                    val recommended = viewModel.updateSelectionForLanguage(manager)
+                    pendingDownload = if (recommended != null && !viewModel.isDownloaded(recommended)) recommended else null
+                },
             )
 
             HorizontalDivider()
@@ -143,6 +157,7 @@ fun AdvancedSettingsSheet(
                 selectedId = selectedId,
                 models = visible,
                 loadingId = loadingId,
+                recommendedId = recommended?.model?.id,
                 onSelect = { viewModel.select(it, manager) },
                 onDownload = { viewModel.download(it, manager) },
             )
@@ -275,6 +290,35 @@ fun AdvancedSettingsSheet(
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+
+    pendingDownload?.let { recommended ->
+        AlertDialog(
+            onDismissRequest = { pendingDownload = null },
+            title = { Text("Download model?") },
+            text = {
+                Text(
+                    "${recommended.displayName} is the recommended model for " +
+                        "${languageCode?.let { WhisperLanguages.nameOf(it) } ?: "Auto-detect"}. " +
+                        "Download it now to start dictating with this language.",
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingDownload = null
+                        viewModel.download(recommended, manager)
+                    },
+                ) {
+                    Text("Download")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDownload = null }) {
+                    Text("Not now")
+                }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -332,6 +376,7 @@ private fun ModelSelector(
     selectedId: String,
     models: List<Pair<CatalogEntry, ModelPickerViewModel.DownloadState>>,
     loadingId: String?,
+    recommendedId: String?,
     onSelect: (CatalogEntry) -> Unit,
     onDownload: (CatalogEntry) -> Unit,
 ) {
@@ -363,6 +408,7 @@ private fun ModelSelector(
                     text = {
                         Column {
                             Text(entry.displayName)
+                            if (entry.model.id == recommendedId) RecommendedBadge()
                             Text(
                                 text = catalogEntryMeta(entry),
                                 style = MaterialTheme.typography.bodySmall,

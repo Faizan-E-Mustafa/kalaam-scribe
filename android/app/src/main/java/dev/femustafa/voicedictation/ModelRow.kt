@@ -110,7 +110,7 @@ internal fun catalogEntryMeta(entry: CatalogEntry): String = buildString {
 
 /** Compact pill marking the catalog's recommended model for the current language. */
 @Composable
-private fun RecommendedBadge() {
+internal fun RecommendedBadge() {
     Surface(
         shape = RoundedCornerShape(percent = 50),
         color = MaterialTheme.colorScheme.secondaryContainer,

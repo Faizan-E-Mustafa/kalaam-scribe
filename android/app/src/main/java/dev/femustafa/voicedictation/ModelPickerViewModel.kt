@@ -57,6 +57,26 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
         app.setLanguageCode(code)
     }
 
+    /**
+     * Re-anchor the selection after a language change (settings sheet): the
+     * recommended model for the new language is selected by default. When it is
+     * already downloaded (and isn't already resident) the resident model is
+     * switched to it immediately; otherwise only the dropdown highlight moves and
+     * the caller should prompt the user to download it. Returns the recommended
+     * model so the caller can drive that prompt.
+     */
+    fun updateSelectionForLanguage(manager: WhisperManager): CatalogEntry? {
+        val recommended = ModelCatalog.recommendedForLanguage(app.whisper.languageCode.value) ?: return null
+        _selectedId.value = recommended.model.id
+        if (downloader.isDownloaded(recommended, app.modelFormat) && recommended.model.id != app.persistedModelId) {
+            select(recommended, manager)
+        }
+        return recommended
+    }
+
+    /** Whether [entry]'s files already exist in app-private storage. */
+    fun isDownloaded(entry: CatalogEntry): Boolean = downloader.isDownloaded(entry, app.modelFormat)
+
     /** The [CatalogEntry]s to show for the current format. */
     private fun catalogFor(format: ModelFormat): List<CatalogEntry> = when (format) {
         // GGML is disabled (retained in [ModelCatalog.ggmlModels] but never offered).
@@ -140,11 +160,13 @@ class ModelPickerViewModel(application: Application) : AndroidViewModel(applicat
      * for the language ([ModelCatalog.recommendedForLanguage]), else the catalog
      * default when compatible, else the first compatible entry in the list.
      */
-    private fun defaultOrPersistedId(): String {
+    private fun defaultOrPersistedId(): String = selectionFor(app.whisper.languageCode.value)
+
+    private fun selectionFor(code: String?): String {
         val catalog = catalogFor(app.modelFormat)
-        val supported = catalog.filterForLanguage(app.whisper.languageCode.value)
+        val supported = catalog.filterForLanguage(code)
         val persisted = app.persistedModelId?.let { ModelCatalog.byId(it) }
-        val recommended = ModelCatalog.recommendedForLanguage(app.whisper.languageCode.value)
+        val recommended = ModelCatalog.recommendedForLanguage(code)
         val candidates = buildList {
             if (persisted != null) add(persisted)
             addAll(supported)
