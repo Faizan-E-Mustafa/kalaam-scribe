@@ -3,6 +3,7 @@ package dev.femustafa.voicedictation
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -66,6 +67,9 @@ class EngineTranscriptionSessionTest {
         // One 512 window: chunk 2 (seg2).
         session.accept(shortsOf(2, 512))
         val full = session.flush("")
+        // flush() joins the worker, so both segments are decoded; drain the collector
+        // (same runBlocking thread, so yield() guarantees delivery) before asserting.
+        withTimeout(1000) { while (got.size < 2) yield() }
 
         collector.cancel()
         assertEquals(listOf("len100", "len200"), got)
@@ -88,6 +92,8 @@ class EngineTranscriptionSessionTest {
 
         session.accept(shortsOf(1, 512))
         val full = session.flush("")
+        // Same same-thread drain as the segmentsInOrder test: two decoded partials.
+        withTimeout(1000) { while (got.size < 2) yield() }
 
         collector.cancel()
         // Tail segment decoded AFTER the early segment — always last.
