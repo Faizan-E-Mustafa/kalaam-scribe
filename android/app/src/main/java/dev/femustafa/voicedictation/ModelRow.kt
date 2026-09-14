@@ -101,15 +101,18 @@ internal fun ModelRow(
 }
 
 /**
- * Tech subtext for a model row/dropdown item: engine title · precision · size
- * (no format/language jargon). Tier speed/accuracy icons are rendered separately
- * by [ModelMetaLine].
+ * Tech subtext for a model row/dropdown item: size label (tiny/base/small) followed by
+ * precision · size (no format/language jargon).
  */
 internal fun catalogEntryMeta(entry: CatalogEntry): String = buildString {
-    append(entry.modelName)
-    entry.precision?.let { append(" · ${it.label}") }
-    if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
-    if (ModelCatalog.isOmnilingual(entry)) append(" · auto-detect · 1600+ languages")
+    val sizeLabel = entry.sizeLabel()
+    if (!sizeLabel.isNullOrEmpty()) {
+        append(sizeLabel)
+        append(" · ")
+    }
+    entry.precision?.let { append("${it.label} · ") }
+    if (entry.approxSizeMb > 0) append("${entry.approxSizeMb} MB")
+    if (ModelCatalog.isOmnilingual(entry)) append("auto-detect · 1600+ languages")
 }
 
 /**
@@ -133,6 +136,18 @@ internal fun CatalogEntry.tier(): ModelTier = when {
     model.id.contains("tiny") -> ModelTier.FAST
     model.id.contains("small") || model.id.contains("roman-urdu") -> ModelTier.HIGH_ACCURACY
     else -> ModelTier.BALANCED
+}
+
+/**
+ * Returns a short size label (tiny/base/small) derived from the model id,
+ * or null if the id does not contain a known size token.
+ */
+internal fun CatalogEntry.sizeLabel(): String? = when {
+    model.id.contains("tiny") -> "tiny"
+    model.id.contains("small") -> "small"
+    model.id.contains("base") -> "base"
+    model.id == "roman-urdu-int8" || model.id == "roman-urdu-fp32" -> "small"
+    else -> null
 }
 
 /**
