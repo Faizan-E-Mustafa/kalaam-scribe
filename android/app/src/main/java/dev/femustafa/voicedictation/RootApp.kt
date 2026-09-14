@@ -10,8 +10,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 
 /**
  * Top-level composable: owns the [WhisperManager] (production wiring: AAR engine +
- * app-private storage) and the [ModelPickerViewModel], and switches between the
- * dictation surface and the model picker.
+ * app-private storage) and the [ModelPickerViewModel], shows the dictation
+ * surface, and hosts the settings bottom sheet over it.
  */
 @Composable
 fun RootApp() {
@@ -21,7 +21,6 @@ fun RootApp() {
     val pickerViewModel: ModelPickerViewModel = viewModel()
     val dictationViewModel: DictationViewModel = viewModel()
 
-    var showPicker by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
     // First run: ask the dictation language before showing the app, so the model
     // list can be filtered by it. Dismissed permanently once a language is chosen.
@@ -35,26 +34,20 @@ fun RootApp() {
             onLanguageChange = { code -> app.setLanguageCode(code) },
             onContinue = { showOnboarding = false },
         )
-    } else if (showPicker) {
-        ModelPickerScreen(
-            viewModel = pickerViewModel,
-            onSelect = { entry ->
-                pickerViewModel.select(entry, manager)
-            },
-            onDownload = { entry -> pickerViewModel.download(entry, manager) },
-            onClose = { showPicker = false },
-        )
-    } else if (showSettings) {
-        SettingsScreen(onBack = { showSettings = false })
     } else {
         DictationScreen(
             viewModel = dictationViewModel,
-            currentModelName = manager.currentModel?.let { ModelCatalog.byId(it.id)?.modelName },
-            onOpenPicker = {
+            onOpenSettings = {
                 pickerViewModel.refresh()
-                showPicker = true
+                showSettings = true
             },
-            onOpenSettings = { showSettings = true },
         )
+        if (showSettings) {
+            AdvancedSettingsSheet(
+                viewModel = pickerViewModel,
+                manager = manager,
+                onClose = { showSettings = false },
+            )
+        }
     }
 }

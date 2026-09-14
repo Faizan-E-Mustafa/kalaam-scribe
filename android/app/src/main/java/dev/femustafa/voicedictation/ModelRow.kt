@@ -5,7 +5,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -32,13 +35,7 @@ internal fun ModelRow(
     onSelect: () -> Unit,
     onDownload: () -> Unit,
 ) {
-    val meta = buildString {
-        // Tech subtext: engine title · precision · size (no format/language jargon).
-        append(entry.modelName)
-        entry.precision?.let { append(" · ${it.label}") }
-        if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
-        if (ModelCatalog.isOmnilingual(entry)) append(" · auto-detect · 1600+ languages")
-    }
+    val meta = catalogEntryMeta(entry)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -79,13 +76,36 @@ internal fun ModelRow(
         when (dlState) {
             ModelPickerViewModel.DownloadState.Ready -> Text("Ready", color = MaterialTheme.colorScheme.primary)
             is ModelPickerViewModel.DownloadState.Downloading -> Text("…", style = MaterialTheme.typography.bodySmall)
-            ModelPickerViewModel.DownloadState.NotDownloaded -> Button(
+            ModelPickerViewModel.DownloadState.NotDownloaded -> IconButton(
                 onClick = onDownload,
                 enabled = entry.sourceUrl != null || entry.onnxSourceUrl != null,
-            ) { Text("Download") }
-            is ModelPickerViewModel.DownloadState.Failed -> Button(onClick = onDownload) { Text("Retry") }
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Download,
+                    contentDescription = "Download ${entry.displayName}",
+                )
+            }
+            is ModelPickerViewModel.DownloadState.Failed -> IconButton(
+                onClick = onDownload,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Download,
+                    contentDescription = "Retry download ${entry.displayName}",
+                )
+            }
         }
     }
+}
+
+/**
+ * Tech subtext for a model row/dropdown item: engine title · precision · size
+ * (no format/language jargon).
+ */
+internal fun catalogEntryMeta(entry: CatalogEntry): String = buildString {
+    append(entry.modelName)
+    entry.precision?.let { append(" · ${it.label}") }
+    if (entry.approxSizeMb > 0) append(" · ${entry.approxSizeMb} MB")
+    if (ModelCatalog.isOmnilingual(entry)) append(" · auto-detect · 1600+ languages")
 }
 
 /** Compact pill marking the catalog's recommended model for the current language. */

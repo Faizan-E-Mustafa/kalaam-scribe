@@ -32,6 +32,8 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
@@ -39,6 +41,8 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,8 +66,6 @@ private val AUDIO_MIME_TYPES = arrayOf("audio/wav", "audio/x-wav", "audio/mpeg")
 @Composable
 fun DictationScreen(
     viewModel: DictationViewModel,
-    currentModelName: String?,
-    onOpenPicker: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
     val recording by viewModel.recording.collectAsState()
@@ -118,7 +120,7 @@ fun DictationScreen(
         modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        // Top chips
+        // Top row: status chip + settings gear
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -146,17 +148,13 @@ fun DictationScreen(
                 )
                 else -> AssistChip(onClick = {}, label = { Text("Ready") })
             }
-            AssistChip(
-                onClick = onOpenSettings,
-                label = { Text("Settings" )},
-                colors = AssistChipDefaults.assistChipColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            )
-            AssistChip(
-                onClick = onOpenPicker,
-                label = {
-                    Text(currentModelName ?: "no model")
-                },
-            )
+            IconButton(onClick = onOpenSettings) {
+                Icon(
+                    imageVector = Icons.Filled.Settings,
+                    contentDescription = "Settings",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
 
         if (recording) {
