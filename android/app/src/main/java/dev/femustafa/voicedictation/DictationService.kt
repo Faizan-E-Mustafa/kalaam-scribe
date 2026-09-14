@@ -126,6 +126,9 @@ class DictationService : Service() {
                 }
             } else {
                 recorder.frameListener = null
+                if (wantStreaming) {
+                    Log.e(TAG, "streaming session unavailable (missing VAD or engine without streaming support); fell back to whole-clip batch")
+                }
             }
 
             try {

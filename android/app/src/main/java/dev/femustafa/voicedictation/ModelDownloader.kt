@@ -93,26 +93,33 @@ class ModelDownloader(
     }
 
     /**
-     * True when both Dolphin CTC files (model.onnx + tokens.txt) exist with
-     * plausible sizes. Guards against stale/truncated files that would otherwise
-     * load as "Ready" and crash sherpa-onnx at transcription time.
+     * True when both Dolphin CTC files (model.onnx + tokens.txt) plus the shared
+     * silero_vad.onnx exist with plausible sizes. Guards against stale/truncated
+     * files that would otherwise load as "Ready" and crash sherpa-onnx at
+     * transcription time. VAD absence only downgrades to whole-clip decode, but
+     * keeping it in the completeness gate drives the download so streaming works.
      */
     fun dolphinComplete(entry: CatalogEntry): Boolean {
         val model = java.io.File(baseDir, entry.model.fileName)
         val tokens = java.io.File(baseDir, DolphinCtcEngine.dolphinTokensName(entry))
+        val vad = java.io.File(baseDir, vadFileName())
         return model.exists() && model.length() >= MIN_DOLPHIN_MODEL_BYTES &&
-            tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES
+            tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES &&
+            vad.exists() && vad.length() >= MIN_VAD_BYTES
     }
 
     /**
-     * True when both Omnilingual files (model.int8.onnx + tokens.txt) exist with
-     * plausible sizes. Same shape as a Dolphin CTC model (single model + tokens).
+     * True when the Omnilingual files (model.int8.onnx + tokens.txt) plus the shared
+     * silero_vad.onnx exist with plausible sizes. Same shape as a Dolphin CTC model
+     * (single model + tokens); VAD is gated so streaming works.
      */
     fun omnilingualComplete(entry: CatalogEntry): Boolean {
         val model = java.io.File(baseDir, entry.model.fileName)
         val tokens = java.io.File(baseDir, OmnilingualEngine.omnilingualTokensName(entry))
+        val vad = java.io.File(baseDir, vadFileName())
         return model.exists() && model.length() >= MIN_DOLPHIN_MODEL_BYTES &&
-            tokens.exists() && tokens.length() >= MIN_OMNILINGUAL_TOKENS_BYTES
+            tokens.exists() && tokens.length() >= MIN_OMNILINGUAL_TOKENS_BYTES &&
+            vad.exists() && vad.length() >= MIN_VAD_BYTES
     }
 
     /**
@@ -137,17 +144,21 @@ class ModelDownloader(
     }
 
     /**
-     * True when all three ONNX files (encoder, decoder, tokens) exist with
-     * plausible sizes. Guards against stale/truncated files that would otherwise
-     * load as "Ready" and crash sherpa-onnx at transcription time.
+     * True when all three ONNX files (encoder, decoder, tokens) plus the shared
+     * silero_vad.onnx exist with plausible sizes. Guards against stale/truncated
+     * files that would otherwise load as "Ready" and crash sherpa-onnx at
+     * transcription time. VAD absence only downgrades to whole-clip decode, but
+     * keeping it in the completeness gate drives the download so streaming works.
      */
     fun onnxComplete(entry: CatalogEntry): Boolean {
         val encoder = java.io.File(baseDir, onnxEncoderName(entry))
         val decoder = java.io.File(baseDir, onnxDecoderName(entry))
         val tokens = java.io.File(baseDir, onnxTokensName(entry))
+        val vad = java.io.File(baseDir, vadFileName())
         return encoder.exists() && encoder.length() >= MIN_ONNX_ENCODER_BYTES &&
             decoder.exists() && decoder.length() >= MIN_ONNX_DECODER_BYTES &&
-            tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES
+            tokens.exists() && tokens.length() >= MIN_ONNX_TOKENS_BYTES &&
+            vad.exists() && vad.length() >= MIN_VAD_BYTES
     }
 
     /** The .onnx encoder filename for an ONNX model, e.g. `<id>-encoder.onnx` or `<id>-encoder.int8.onnx`. */
@@ -345,6 +356,7 @@ class ModelDownloader(
         val modelTarget = java.io.File(baseDir, entry.model.fileName)
         if (modelTarget.exists() && modelTarget.length() >= MIN_DOLPHIN_MODEL_BYTES) {
             ensureTokens(entry, modelUrl, tokensName, minTokensBytes)
+            ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES)
             onProgress(1f)
             return Result.Success(modelTarget.length())
         }
@@ -379,6 +391,7 @@ class ModelDownloader(
             if (modelTmp.renameTo(modelTarget)) {
                 modelTmp.delete()
                 ensureTokens(entry, modelUrl, tokensName)
+                ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES)
                 onProgress(1f)
                 return Result.Success(downloaded)
             }
@@ -562,17 +575,20 @@ class ModelDownloader(
     }
 
     /**
-     * Ensure the decoder and tokens siblings exist for [entry]'s ONNX model. Both are required by sherpa-onnx (loading without them fails), so a missing
-     * sibling is reported as a failure rather than silently ignored. The two
-     * siblings are downloaded concurrently to cut total download time.
+     * Ensure the decoder and tokens siblings exist for [entry]'s ONNX model, plus the
+     * shared silero_vad.onnx (required for streaming). Both ONNX siblings are required
+     * by sherpa-onnx (loading without them fails), so a missing sibling is reported as
+     * a failure rather than silently ignored. The siblings are downloaded concurrently
+     * to cut total download time.
      */
     private suspend fun ensureSiblings(entry: CatalogEntry, encoderUrl: String) {
-        val (decoderGot, tokensGot) = coroutineScope {
+        val (decoderGot, tokensGot, vadGot) = coroutineScope {
             val decoderDeferred = async { ensureSibling(encoderUrl, "decoder", onnxDecoderName(entry)) }
             val tokensDeferred = async { ensureSibling(encoderUrl, "tokens", onnxTokensName(entry)) }
-            decoderDeferred.await() to tokensDeferred.await()
+            val vadDeferred = async { ensureDolphinAttnSibling(ModelCatalog.SHERPA_SILERO_VAD, vadFileName(), MIN_VAD_BYTES) }
+            Triple(decoderDeferred.await(), tokensDeferred.await(), vadDeferred.await())
         }
-        if (!(decoderGot && tokensGot)) {
+        if (!(decoderGot && tokensGot && vadGot)) {
             Log.w(TAG, "ONNX sibling download incomplete for ${entry.model.id}")
         }
     }
