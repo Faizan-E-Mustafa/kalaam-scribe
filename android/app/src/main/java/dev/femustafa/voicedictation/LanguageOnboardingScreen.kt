@@ -56,6 +56,9 @@ fun LanguageOnboardingScreen(
     onContinue: () -> Unit,
 ) {
     var selected by remember { mutableStateOf<String?>(null) }
+    // The model the user actually picked; null until they tap a row, so the
+    // recommended model for the language stays highlighted by default.
+    var selectedModelId by remember { mutableStateOf<String?>(null) }
     val state by viewModel.state.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
     val loadingId by viewModel.loadingId.collectAsState()
@@ -68,10 +71,9 @@ fun LanguageOnboardingScreen(
             .filter { (entry, _) -> entry.supportsLanguage(code) }
             .sortedWith(compareByDescending { it.first.model.id == recommended?.model?.id })
     }
-    // The radio shows the recommended model once a language is picked; before any
-    // download its row is just pre-highlighted and tapping it is a no-op, but after
-    // the recommended download the ViewModel auto-selects it for real.
-    val radioSelectedId = recommended?.model?.id ?: selectedId
+    // The radio pre-highlights the recommended model once a language is picked;
+    // tapping any downloaded row moves the highlight (and selection) to it.
+    val radioSelectedId = selectedModelId ?: recommended?.model?.id ?: selectedId
     val activeReady = visible.any { (entry, dl) ->
         entry.model.id == radioSelectedId && dl is ModelPickerViewModel.DownloadState.Ready
     }
@@ -98,6 +100,7 @@ fun LanguageOnboardingScreen(
             onSelect = { code ->
                 if (code != null) {
                     selected = code
+                    selectedModelId = null   // re-highlight the new language's recommended model
                     onLanguageChange(code)
                 }
             },
@@ -124,7 +127,12 @@ fun LanguageOnboardingScreen(
                         selected = entry.model.id == radioSelectedId,
                         loading = entry.model.id == loadingId,
                         isRecommended = entry.model.id == recommended?.model?.id,
-                        onSelect = { onSelect(entry) },
+                        onSelect = {
+                            onSelect(entry)
+                            if (dlState is ModelPickerViewModel.DownloadState.Ready) {
+                                selectedModelId = entry.model.id
+                            }
+                        },
                         onDownload = { onDownload(entry) },
                     )
                     HorizontalDivider()
