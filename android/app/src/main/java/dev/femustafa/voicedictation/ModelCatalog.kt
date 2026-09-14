@@ -210,7 +210,7 @@ object ModelCatalog {
         // base.en (English) — fp32 + int8
         onnx(
             id = "base.en-fp32",
-            displayName = "English · Balanced",
+            displayName = "Whisper · Balanced",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_BASE_EN/base.en-encoder.onnx",
@@ -218,7 +218,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "base.en-int8",
-            displayName = "English · Balanced",
+            displayName = "Whisper · Balanced",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_BASE_EN/base.en-encoder.int8.onnx",
@@ -227,7 +227,7 @@ object ModelCatalog {
         // base (multilingual) — fp32 + int8
         onnx(
             id = "base-fp32",
-            displayName = "Multilingual · Balanced",
+            displayName = "Whisper · Balanced",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_BASE/base-encoder.onnx",
@@ -235,7 +235,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "base-int8",
-            displayName = "Multilingual · Balanced",
+            displayName = "Whisper · Balanced",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_BASE/base-encoder.int8.onnx",
@@ -244,7 +244,7 @@ object ModelCatalog {
         // tiny.en (English) — fp32 + int8
         onnx(
             id = "tiny.en-fp32",
-            displayName = "English · Fast",
+            displayName = "Whisper · Fast",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_TINY_EN/tiny.en-encoder.onnx",
@@ -252,7 +252,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "tiny.en-int8",
-            displayName = "English · Fast",
+            displayName = "Whisper · Fast",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_TINY_EN/tiny.en-encoder.int8.onnx",
@@ -261,7 +261,7 @@ object ModelCatalog {
         // tiny (multilingual) — fp32 + int8
         onnx(
             id = "tiny-fp32",
-            displayName = "Multilingual · Fast",
+            displayName = "Whisper · Fast",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_TINY/tiny-encoder.onnx",
@@ -269,7 +269,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "tiny-int8",
-            displayName = "Multilingual · Fast",
+            displayName = "Whisper · Fast",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_TINY/tiny-encoder.int8.onnx",
@@ -278,7 +278,7 @@ object ModelCatalog {
         // small (multilingual) — fp32 + int8
         onnx(
             id = "small-fp32",
-            displayName = "Multilingual · High accuracy",
+            displayName = "Whisper · High Accuracy",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_SMALL/small-encoder.onnx",
@@ -286,7 +286,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "small-int8",
-            displayName = "Multilingual · High accuracy",
+            displayName = "Whisper · High Accuracy",
             languageMode = LanguageMode.Auto,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_SMALL/small-encoder.int8.onnx",
@@ -295,7 +295,7 @@ object ModelCatalog {
         // small.en (English) — fp32 + int8
         onnx(
             id = "small.en-fp32",
-            displayName = "English · High accuracy",
+            displayName = "Whisper · High Accuracy",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.FP32,
             encoderUrl = "$SHERPA_ONNX_SMALL_EN/small.en-encoder.onnx",
@@ -303,7 +303,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "small.en-int8",
-            displayName = "English · High accuracy",
+            displayName = "Whisper · High Accuracy",
             languageMode = LanguageMode.English,
             precision = ModelPrecision.INT8,
             encoderUrl = "$SHERPA_ONNX_SMALL_EN/small.en-encoder.int8.onnx",
@@ -312,7 +312,7 @@ object ModelCatalog {
         // Roman-Urdu (fine-tune of whisper-small) — fp32 + int8
         onnx(
             id = "roman-urdu-fp32",
-            displayName = "Roman-Urdu · High accuracy",
+            displayName = "Roman-Urdu · High Accuracy",
             languageMode = LanguageMode.RomanUrdu,
             precision = ModelPrecision.FP32,
             encoderUrl = "$RU_HF/roman-urdu-encoder.onnx",
@@ -320,7 +320,7 @@ object ModelCatalog {
         ),
         onnx(
             id = "roman-urdu-int8",
-            displayName = "Roman-Urdu",
+            displayName = "Roman-Urdu · High Accuracy",
             languageMode = LanguageMode.RomanUrdu,
             precision = ModelPrecision.INT8,
             encoderUrl = "$RU_HF/roman-urdu-encoder.int8.onnx",
@@ -419,7 +419,7 @@ object ModelCatalog {
         ),
         dolphinAttn(
             id = "dolphin-attn-small",
-            displayName = "Dolphin · High accuracy",
+            displayName = "Dolphin · High Accuracy",
             encoderUrl = "$DOLPHIN_ATTN_HF/small/encoder.onnx",
             approxSizeMb = 699,
         ),
@@ -434,7 +434,7 @@ object ModelCatalog {
         ),
         CatalogEntry(
             model = Model(id = "dolphin-attn-int8-small", fileName = "dolphin-attn-int8-small-encoder.onnx", languageMode = LanguageMode.Auto),
-            displayName = "Dolphin · High accuracy",
+            displayName = "Dolphin · High Accuracy",
             sourceUrl = null,
             onnxSourceUrl = "$DOLPHIN_ATTN_INT8_HF/small/encoder.onnx",
             approxSizeMb = 748,
@@ -550,10 +550,10 @@ object ModelCatalog {
      * The model recommended for a dictation language [code] (a [WhisperLanguages]
      * code, or null/blank for Auto-detect). Drives the welcome screen's
      * "Recommended" pick and the model picker's default highlight:
-     * - `en` → English · Balanced (`base.en-int8`)
+     * - `en` → Whisper · Balanced (`base.en-int8`)
      * - `ur` → Dolphin · Balanced (`dolphin-attn-base`, fp16/arm)
-     * - [WhisperLanguages.URDU_ROMAN] → Roman-Urdu · `roman-urdu-int8`
-     * - any other language (multilingual tier covers them all) → Multilingual ·
+     * - [WhisperLanguages.URDU_ROMAN] → Roman-Urdu · High Accuracy (`roman-urdu-int8`)
+     * - any other language (multilingual tier covers them all) → Whisper ·
      *   Balanced (`base-int8`), also the pick for Auto-detect.
      */
     fun recommendedForLanguage(code: String?): CatalogEntry? = when (code) {

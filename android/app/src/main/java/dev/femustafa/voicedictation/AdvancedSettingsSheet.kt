@@ -53,6 +53,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -347,13 +348,19 @@ private fun ModelSelector(
                 DropdownMenuItem(
                     text = {
                         Column {
-                            Text(entry.displayName)
-                            if (entry.model.id == recommendedId) RecommendedBadge()
-                            Text(
-                                text = catalogEntryMeta(entry),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = entry.displayName,
+                                    maxLines = 1,
+                                    softWrap = false,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false),
+                                )
+                                if (entry.model.id == recommendedId) {
+                                    RecommendedBadge(modifier = Modifier.padding(start = 6.dp))
+                                }
+                            }
+                            ModelMetaLine(entry)
                         }
                     },
                     onClick = {

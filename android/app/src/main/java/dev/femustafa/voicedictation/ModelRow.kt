@@ -2,11 +2,16 @@ package dev.femustafa.voicedictation
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.FlashOn
+import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -35,31 +40,26 @@ internal fun ModelRow(
     onSelect: () -> Unit,
     onDownload: () -> Unit,
 ) {
-    val meta = catalogEntryMeta(entry)
     Row(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         RadioButton(selected = selected, onClick = onSelect)
         Column(modifier = Modifier.weight(1f).padding(horizontal = 8.dp)) {
-            Text(
-                text = entry.displayName,
-                style = MaterialTheme.typography.bodyLarge,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
-            if (isRecommended) {
-                RecommendedBadge()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = entry.displayName,
+                    style = MaterialTheme.typography.bodyLarge,
+                    maxLines = 1,
+                    softWrap = false,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (isRecommended) {
+                    RecommendedBadge(modifier = Modifier.padding(start = 6.dp))
+                }
             }
-            Text(
-                text = meta,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                softWrap = false,
-                overflow = TextOverflow.Ellipsis,
-            )
+            ModelMetaLine(entry)
             if (loading) {
                 LinearProgressIndicator(modifier = Modifier.fillMaxWidth().padding(top = 4.dp))
             }
@@ -102,7 +102,8 @@ internal fun ModelRow(
 
 /**
  * Tech subtext for a model row/dropdown item: engine title · precision · size
- * (no format/language jargon).
+ * (no format/language jargon). Tier speed/accuracy icons are rendered separately
+ * by [ModelMetaLine].
  */
 internal fun catalogEntryMeta(entry: CatalogEntry): String = buildString {
     append(entry.modelName)
@@ -111,12 +112,79 @@ internal fun catalogEntryMeta(entry: CatalogEntry): String = buildString {
     if (ModelCatalog.isOmnilingual(entry)) append(" · auto-detect · 1600+ languages")
 }
 
+/**
+ * The user-facing quality tier of a catalog entry — Fast (fast, lower accuracy),
+ * Balanced (middle), or High Accuracy (slow, most accurate).
+ */
+internal enum class ModelTier(
+    val speed: Int,
+    val accuracy: Int,
+) {
+    FAST(speed = 3, accuracy = 1),
+    BALANCED(speed = 2, accuracy = 2),
+    HIGH_ACCURACY(speed = 1, accuracy = 3),
+}
+
+/**
+ * Map a catalog entry to its [ModelTier] by model size (tiny → Fast,
+ * small → High Accuracy, everything else → Balanced).
+ */
+internal fun CatalogEntry.tier(): ModelTier = when {
+    model.id.contains("tiny") -> ModelTier.FAST
+    model.id.contains("small") || model.id.contains("roman-urdu") -> ModelTier.HIGH_ACCURACY
+    else -> ModelTier.BALANCED
+}
+
+/**
+ * The meta line under a model name: tier speed/accuracy icons (theme-tinted,
+ * so they read on any background) followed by the tech subtext from
+ * [catalogEntryMeta].
+ */
+@Composable
+internal fun ModelMetaLine(
+    entry: CatalogEntry,
+    modifier: Modifier = Modifier,
+) {
+    val tier = entry.tier()
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        repeat(tier.speed) {
+            Icon(
+                imageVector = Icons.Filled.FlashOn,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        repeat(tier.accuracy) {
+            Icon(
+                imageVector = Icons.Filled.TrackChanges,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(14.dp),
+            )
+        }
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = catalogEntryMeta(entry),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 /** Compact pill marking the catalog's recommended model for the current language. */
 @Composable
-internal fun RecommendedBadge() {
+internal fun RecommendedBadge(modifier: Modifier = Modifier) {
     Surface(
         shape = RoundedCornerShape(percent = 50),
         color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = modifier,
     ) {
         Text(
             text = "Recommended",

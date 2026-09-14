@@ -134,7 +134,7 @@ class ModelCatalogTest {
         assertEquals("base.en-int8", ModelCatalog.recommendedForLanguage("en")!!.model.id)
         assertEquals("dolphin-attn-base", ModelCatalog.recommendedForLanguage("ur")!!.model.id)
         assertEquals("roman-urdu-int8", ModelCatalog.recommendedForLanguage(WhisperLanguages.URDU_ROMAN)!!.model.id)
-        // Every other language (and Auto-detect) falls back to Multilingual · Balanced.
+        // Every other language (and Auto-detect) falls back to Whisper · Balanced.
         assertEquals("base-int8", ModelCatalog.recommendedForLanguage("hi")!!.model.id)
         assertEquals("base-int8", ModelCatalog.recommendedForLanguage("haw")!!.model.id)
         assertEquals("base-int8", ModelCatalog.recommendedForLanguage(null)!!.model.id)
