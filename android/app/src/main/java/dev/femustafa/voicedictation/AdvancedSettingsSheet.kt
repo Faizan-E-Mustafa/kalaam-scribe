@@ -166,6 +166,32 @@ fun AdvancedSettingsSheet(
 
             HorizontalDivider()
 
+            SectionHeader(text = "Transcription Mode")
+            Row(modifier = Modifier.padding(vertical = 4.dp)) {
+                TranscriptionMode.entries.forEach { mode ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        RadioButton(
+                            selected = mode == transcriptionMode,
+                            onClick = { transcriptionMode = mode },
+                        )
+                        Text(
+                            when (mode) {
+                                TranscriptionMode.Batch -> "Batch"
+                                TranscriptionMode.SimulatedStreaming -> "Simulated streaming"
+                            },
+                            fontSize = 14.sp,
+                        )
+                    }
+                }
+            }
+            Text(
+                text = "Streaming shows each utterance as you speak.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+
+            HorizontalDivider()
+
             // Collapsible power-user settings, collapsed by default.
             Row(
                 modifier = Modifier
@@ -198,38 +224,6 @@ fun AdvancedSettingsSheet(
                         }
                     }
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
-                    SectionHeader(text = "Transcription Mode")
-                    Row(modifier = Modifier.padding(vertical = 4.dp)) {
-                        TranscriptionMode.entries.forEach { mode ->
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                RadioButton(
-                                    selected = mode == transcriptionMode,
-                                    onClick = { transcriptionMode = mode },
-                                )
-                                Text(
-                                    when (mode) {
-                                        TranscriptionMode.Batch -> "Batch"
-                                        TranscriptionMode.SimulatedStreaming -> "Simulated streaming"
-                                    },
-                                    fontSize = 14.sp,
-                                )
-                            }
-                        }
-                    }
-                    Text(
-                        text = if (streamingActive) {
-                            "Show each utterance as you speak. Requires a streaming-capable model; others fall back to batch."
-                        } else {
-                            "Decode the whole clip after you stop. Best for simple/stable results; works with all models."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-
                     SectionHeader(text = "VAD Settings (streaming only)")
                     val vadDim = Modifier.alpha(if (streamingActive) 1f else 0.4f)
                     Column(modifier = vadDim) {
@@ -244,13 +238,6 @@ fun AdvancedSettingsSheet(
                     SectionHeader(text = "Dolphin Beam Size")
                     CompactSlider(
                         "Beam", beamSize, { beamSize = it }, 1f..5f, "%.0f".format(beamSize), steps = 3,
-                    )
-                    Text(
-                        text = "Dolphin attention models — applies to both batch and streaming. " +
-                            "A higher beam avoids dropping the last sentence on long/multi-sentence " +
-                            "clips, at the cost of more decoding.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }

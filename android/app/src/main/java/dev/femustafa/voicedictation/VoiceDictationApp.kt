@@ -168,10 +168,10 @@ class VoiceDictationApp : Application() {
         private const val KEY_VAD_MAX_SPEECH = "vad_max_speech"
         private const val KEY_DOLPHIN_BEAM_SIZE = "dolphin_beam_size"
         const val DEFAULT_VAD_THRESHOLD = 0.25f
-        const val DEFAULT_VAD_MIN_SILENCE = 0.5f
+        const val DEFAULT_VAD_MIN_SILENCE = 0.8f
         const val DEFAULT_VAD_MIN_SPEECH = 0.5f
         const val DEFAULT_VAD_MAX_SPEECH = 30.0f
-        const val DEFAULT_DOLPHIN_BEAM_SIZE = 2
+        const val DEFAULT_DOLPHIN_BEAM_SIZE = 1
 
         fun from(context: Context): VoiceDictationApp =
             context.applicationContext as VoiceDictationApp
