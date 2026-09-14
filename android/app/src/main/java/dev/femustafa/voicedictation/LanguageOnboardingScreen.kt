@@ -1,5 +1,11 @@
 package dev.femustafa.voicedictation
 
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -10,41 +16,49 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 
 /**
- * First-run screen: asks the user which language they plan to dictate in and,
- * once picked, presents the Models that support it — the catalog's recommended
- * one first with a "Recommended" tag — so the user can download and select a
- * model right away. Only Models for [WhisperLanguages] support a chosen
- * concrete language (no Auto-detect / skip) so the model list is meaningful
- * from the start; the choice stays editable later via the Models screen's
- * Language dropdown.
- *
- * Language changes are published immediately via [onLanguageChange] so the
- * filter, the recommended model, and the picker's default highlight stay in
- * sync. [onContinue] is called once the language is chosen AND its active
- * (selected) model is downloaded; callers dismiss the screen.
+ * First-run screen asking user for language preference.
+ * Polished version with animated mic icon and better visual hierarchy.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -56,8 +70,6 @@ fun LanguageOnboardingScreen(
     onContinue: () -> Unit,
 ) {
     var selected by remember { mutableStateOf<String?>(null) }
-    // The model the user actually picked; null until they tap a row, so the
-    // recommended model for the language stays highlighted by default.
     var selectedModelId by remember { mutableStateOf<String?>(null) }
     val state by viewModel.state.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
@@ -71,30 +83,42 @@ fun LanguageOnboardingScreen(
             .filter { (entry, _) -> entry.supportsLanguage(code) }
             .sortedWith(compareByDescending { it.first.model.id == recommended?.model?.id })
     }
-    // The radio pre-highlights the recommended model once a language is picked;
-    // tapping any downloaded row moves the highlight (and selection) to it.
     val radioSelectedId = selectedModelId ?: recommended?.model?.id ?: selectedId
     val activeReady = visible.any { (entry, dl) ->
         entry.model.id == radioSelectedId && dl is ModelPickerViewModel.DownloadState.Ready
     }
 
+    val coroutineScope = rememberCoroutineScope()
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(16.dp),
+            .padding(horizontal = 24.dp),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Spacer(modifier = Modifier.height(24.dp))
-        Text(text = "Welcome", style = MaterialTheme.typography.headlineMedium)
-        Spacer(modifier = Modifier.height(8.dp))
+        AnimatedMicIcon()
+
+        Spacer(modifier = Modifier.height(32.dp))
+
         Text(
-            text = "Which language will you dictate in? Only models that support it " +
-                "are shown below — the recommended one is enough to get started.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = "Welcome",
+            style = MaterialTheme.typography.headlineLarge.copy(fontWeight = FontWeight.SemiBold),
+            color = MaterialTheme.colorScheme.onSurface,
         )
 
-        Spacer(modifier = Modifier.height(20.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+
+        Text(
+            text = "Pick your language to get started with on-device dictation.",
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            lineHeight = 24.sp,
+        )
+
+        Spacer(modifier = Modifier.height(32.dp))
+
         SearchableLanguageDropdown(
             selectedCode = selected,
             onSelect = { code ->
@@ -108,17 +132,20 @@ fun LanguageOnboardingScreen(
         )
 
         if (selected != null) {
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text(
                 text = "Models for ${WhisperLanguages.nameOf(selected!!) ?: selected!!}",
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
+                color = MaterialTheme.colorScheme.onSurface,
             )
-            // The list scrolls independently so the Continue button stays on screen
-            // no matter how many models the language has.
+
             LazyColumn(
-                modifier = Modifier.weight(1f).fillMaxWidth().padding(top = 4.dp),
-                contentPadding = PaddingValues(bottom = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(2.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(200.dp),
+                contentPadding = PaddingValues(vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 items(visible, key = { it.first.model.id }) { (entry, dlState) ->
                     ModelRow(
@@ -135,28 +162,65 @@ fun LanguageOnboardingScreen(
                         },
                         onDownload = { onDownload(entry) },
                     )
-                    HorizontalDivider()
                 }
             }
         } else {
             Spacer(modifier = Modifier.weight(1f))
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(24.dp))
+
         if (selected != null && !activeReady) {
-            Text(
-                text = "Download the recommended model to continue",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                shape = RoundedCornerShape(12.dp),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(
+                        text = "Download the recommended model to continue",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
         }
+
         Button(
             onClick = { if (selected != null && activeReady) onContinue() },
             enabled = selected != null && activeReady,
             modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(
+                containerColor = if (selected != null && activeReady) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = if (selected != null && activeReady) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+            ),
+            shape = RoundedCornerShape(12.dp),
         ) {
-            Text("Continue")
+            Text(
+                text = "Continue",
+                fontWeight = FontWeight.SemiBold,
+            )
         }
+
+        Spacer(modifier = Modifier.height(32.dp))
     }
+}
+
+@Composable
+fun AnimatedMicIcon() {
+    val transition = rememberInfiniteTransition(label = "mic")
+    val scale by transition.animateFloat(1f, 1.1f, animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Reverse), label = "scale")
+    val alpha by transition.animateFloat(1f, 0.8f, animationSpec = infiniteRepeatable(tween(1000, easing = LinearEasing), RepeatMode.Reverse), label = "alpha")
+
+    return Icon(
+        imageVector = Icons.Filled.Mic,
+        contentDescription = "Voice dictation logo",
+        tint = MaterialTheme.colorScheme.primary.copy(alpha = alpha),
+        modifier = Modifier
+            .size(64.dp)
+            .graphicsLayer(scaleX = scale, scaleY = scale),
+    )
 }
