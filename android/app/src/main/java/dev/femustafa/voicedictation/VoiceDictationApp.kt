@@ -34,7 +34,7 @@ class VoiceDictationApp : Application() {
 
     /** The single shared resident-model manager, created lazily on first use. */
     val whisper: WhisperManager by lazy {
-        WhisperManager(filesDir, DualFormatWhisperEngine(this)).also { mgr ->
+        WhisperManager(filesDir, DualFormatWhisperEngine(this), vadFactory = ::sherpaVadOrNull).also { mgr ->
             // Reflect the user's last-chosen Model (or the catalog default) as the
             // resident Model when its file is already on disk, so the top chip shows
             // it and transcription can start without a picker tap. Load is lazy.
@@ -42,6 +42,25 @@ class VoiceDictationApp : Application() {
             // Restore the persisted language-code selection.
             mgr.setLanguageCode(prefs.getString(KEY_LANGUAGE_CODE, null))
         }
+    }
+
+    /** Build the shared Silero VAD for BatchVad segmentation, or null if its model is missing. */
+    private fun sherpaVadOrNull(): VadLike? {
+        val sileroPath = java.io.File(filesDir, "silero_vad.onnx").absolutePath
+        if (!java.io.File(sileroPath).exists()) return null
+        val silero = com.k2fsa.sherpa.onnx.SileroVadModelConfig()
+        silero.model = sileroPath
+        silero.threshold = vadThreshold()
+        silero.minSilenceDuration = vadMinSilence()
+        silero.minSpeechDuration = vadMinSpeech()
+        silero.windowSize = 512
+        silero.maxSpeechDuration = vadMaxSpeech()
+        val vadConfig = com.k2fsa.sherpa.onnx.VadModelConfig()
+        vadConfig.sileroVadModelConfig = silero
+        vadConfig.sampleRate = 16000
+        vadConfig.numThreads = whisperThreads()
+        vadConfig.provider = "cpu"
+        return SherpaVad(com.k2fsa.sherpa.onnx.Vad(null, vadConfig))
     }
 
     private val prefs: android.content.SharedPreferences

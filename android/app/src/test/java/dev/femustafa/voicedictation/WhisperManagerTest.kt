@@ -8,6 +8,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.File
+import java.util.ArrayDeque
 
 /**
  * Unit tests for the WhisperManager resident-model lifecycle (ADR 0004), using a
@@ -275,5 +276,78 @@ class WhisperManagerTest {
         assertEquals(LanguageMode.English, mode2)
         assertNull(lang2)
         second?.close()
+    }
+
+    /** A [VadLike] that surfaces its segments only at [flush] (fake for BatchVad tests). */
+    private class QueueVad(private val segments: List<SpeechSegment>) : VadLike {
+        private val queued = ArrayDeque<SpeechSegment>()
+        override fun acceptWaveform(samples: FloatArray) = Unit
+        override fun isSpeechDetected(): Boolean = false
+        override fun isEmpty(): Boolean = queued.isEmpty()
+        override fun front(): SpeechSegment? = queued.firstOrNull()
+        override fun pop() {
+            if (queued.isNotEmpty()) queued.removeFirst()
+        }
+
+        override fun flush() {
+            queued.addAll(segments)
+        }
+    }
+
+    @Test
+    fun transcribeVadMergesAndDecodesChunksInOrder() = runTest {
+        val engine = FakeEngine()
+        // 32 s clip: two utterances far enough apart (> 28 s) that the merge cap keeps
+        // them as two separate chunks which decode in order and are joined with a space.
+        val clipPath = "$baseDir/vad-input.wav"
+        baseDir.mkdirs()
+        AudioDecoder.writePcm16Wav(File(clipPath), FloatArray(32 * 16000), 16000)
+        val manager = WhisperManager(
+            baseDir,
+            engine,
+            vadFactory = {
+                QueueVad(
+                    listOf(
+                        SpeechSegment(512, FloatArray(10)),
+                        SpeechSegment(500000, FloatArray(10)),
+                    ),
+                )
+            },
+        )
+        manager.switchTo(english)
+
+        val text = manager.transcribeVad(clipPath)
+
+        assertEquals("text text", text)
+        assertEquals(2, engine.transcribeCalls.size)
+        // Chunk decodes go through temp WAVs derived from the clip, never the raw clip.
+        assertTrue(engine.transcribeCalls.map { it.first }.none { it == clipPath })
+    }
+
+    @Test
+    fun transcribeVadFallsBackToWholeClipWhenVadMissing() = runTest {
+        val engine = FakeEngine()
+        val manager = WhisperManager(baseDir, engine, vadFactory = null)
+        manager.switchTo(english)
+
+        manager.transcribeVad("/data/audio/a.wav")
+
+        assertEquals(1, engine.transcribeCalls.size)
+        assertEquals("/data/audio/a.wav", engine.transcribeCalls.single().first)
+    }
+
+    @Test
+    fun transcribeVadFallsBackToWholeClipWhenVadFindsNoSpeech() = runTest {
+        val engine = FakeEngine()
+        val clipPath = "$baseDir/vad-input.wav"
+        baseDir.mkdirs()
+        AudioDecoder.writePcm16Wav(File(clipPath), FloatArray(16000), 16000)
+        val manager = WhisperManager(baseDir, engine, vadFactory = { QueueVad(emptyList()) })
+        manager.switchTo(english)
+
+        manager.transcribeVad(clipPath)
+
+        assertEquals(1, engine.transcribeCalls.size)
+        assertEquals(clipPath, engine.transcribeCalls.single().first)
     }
 }

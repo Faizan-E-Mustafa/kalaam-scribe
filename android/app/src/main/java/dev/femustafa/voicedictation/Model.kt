@@ -32,12 +32,17 @@ enum class ModelFormat {
  * How dictation turns captured audio into text.
  * - [Batch] decodes the entire clip as one pass after Stop: no text until the
  *   recording ends, simplest and works with every backend (including GGML).
+ * - [BatchVad] stops the clip with the VAD after Stop, merges consecutive
+ *   utterances into <=28 s chunks (WhisperX cut-and-merge), pads each chunk, and
+ *   decodes them in order — more context per decode than [Batch] for long clips,
+ *   works on any backend that can read a WAV file.
  * - [SimulatedStreaming] opens a [TranscriptionSession]: live VAD splits audio
  *   into utterances that decode while still recording, growing the transcript
  *   in real time. Requires a streaming-capable backend; GGML falls back to batch.
  */
 enum class TranscriptionMode {
     Batch,
+    BatchVad,
     SimulatedStreaming,
 }
 

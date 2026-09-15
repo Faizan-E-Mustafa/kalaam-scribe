@@ -89,7 +89,9 @@ fun AdvancedSettingsSheet(
 
     var selectedThreads by remember { mutableStateOf(app.whisperThreads()) }
     var transcriptionMode by remember { mutableStateOf(app.transcriptionMode) }
-    val streamingActive = transcriptionMode == TranscriptionMode.SimulatedStreaming
+    // VAD segmentation feeds both streaming and Batch+VAD, so the VAD settings are
+    // only dimmed in plain batch mode.
+    val vadActive = transcriptionMode != TranscriptionMode.Batch
     var threshold by remember { mutableStateOf(app.vadThreshold()) }
     var minSilence by remember { mutableStateOf(app.vadMinSilence()) }
     var minSpeech by remember { mutableStateOf(app.vadMinSpeech()) }
@@ -178,6 +180,7 @@ fun AdvancedSettingsSheet(
                         Text(
                             when (mode) {
                                 TranscriptionMode.Batch -> "Batch"
+                                TranscriptionMode.BatchVad -> "Batch + VAD"
                                 TranscriptionMode.SimulatedStreaming -> "Simulated streaming"
                             },
                             fontSize = 14.sp,
@@ -186,7 +189,7 @@ fun AdvancedSettingsSheet(
                 }
             }
             Text(
-                text = "Streaming shows each utterance as you speak.",
+                text = "Streaming shows each utterance as you speak. Batch + VAD merges utils into longer, picked chunks.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -225,8 +228,8 @@ fun AdvancedSettingsSheet(
                         }
                     }
 
-                    SectionHeader(text = "VAD Settings (streaming only)")
-                    val vadDim = Modifier.alpha(if (streamingActive) 1f else 0.4f)
+                    SectionHeader(text = "VAD Settings (VAD modes only)")
+                    val vadDim = Modifier.alpha(if (vadActive) 1f else 0.4f)
                     Column(modifier = vadDim) {
                         CompactSlider("Threshold", threshold, { threshold = it }, 0f..1f, "%.2f".format(threshold))
                         CompactSlider("Min Silence", minSilence, { minSilence = it }, 0.1f..5f, "%.1fs".format(minSilence))

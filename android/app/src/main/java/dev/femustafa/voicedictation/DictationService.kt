@@ -179,8 +179,13 @@ class DictationService : Service() {
                     streamingSession = null
                     flushed
                 } ?: run {
-                    // Batch fallback: no live session, run the whole-clip path.
-                    whisper.transcribe(java.io.File(filesDir, "dictation.wav").absolutePath)
+                    // Batch / BatchVad fallback: no live session, run the batch path.
+                    when (app.transcriptionMode) {
+                        TranscriptionMode.BatchVad ->
+                            whisper.transcribeVad(java.io.File(filesDir, "dictation.wav").absolutePath)
+                        else ->
+                            whisper.transcribe(java.io.File(filesDir, "dictation.wav").absolutePath)
+                    }
                 }
                 app.setLastTranscriptionMs(SystemClock.elapsedRealtime() - start)
                 app.setTranscript(text)

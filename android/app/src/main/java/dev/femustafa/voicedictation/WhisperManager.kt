@@ -18,9 +18,11 @@ import java.util.concurrent.atomic.AtomicBoolean
  * The manager talks only to the [WhisperEngine] seam, so its logic is unit-testable
  * on the dev machine without a device.
  */
-class WhisperManager(
+class WhisperManager internal constructor(
     private val baseDir: java.io.File,
     private val engine: WhisperEngine,
+    /** Builds the VAD used by [transcribeVad] (null when the VAD model is missing). */
+    private val vadFactory: (() -> VadLike?)? = null,
 ) {
     sealed interface Status {
         data object Idle : Status
@@ -76,20 +78,73 @@ class WhisperManager(
 
     private suspend fun doTranscribe(audioPath: String): String {
         val model = ensureLoaded() ?: error("no resident model to transcribe")
-        val resident = residentModel!!
-        val languageMode = resident.languageMode
-        // A user code may override only multilingual (non-Roman-Urdu) Models, and only
-        // when it is a real whisper engine code (the synthetic "Urdu (Roman)" code is
-        // never passed down — Roman-Urdu models run their fixed-English mode).
-        val language = resident.canOverrideLanguage.takeIf { it }?.let {
-            _languageCode.value?.takeIf { code -> WhisperLanguages.supports(code) }
-        }
+        val (languageMode, language) = residentLanguage()
         _status.value = Status.Transcribing
         try {
             return engine.transcribe(model, audioPath, languageMode, language)
         } finally {
             _status.value = Status.Idle
         }
+    }
+
+    /**
+     * VAD-segmented batch decode ([TranscriptionMode.BatchVad], vad-accuracy spec):
+     * split [audioPath] with the VAD, merge consecutive utterances into <=[MERGE_MAX_SAMPLES]
+     * (28 s) chunks, pad each chunk ([PAD_SAMPLES] both sides), and decode the chunks in
+     * order with the resident engine. Longer per-decode context for long clips than a single
+     * whole-clip pass, with chunk boundaries at real silence gaps.
+     *
+     * Falls back to the plain whole-clip [transcribe] when the VAD model is unavailable or
+     * the audio cannot be read.
+     */
+    suspend fun transcribeVad(audioPath: String): String =
+        transcriptionMutex.withLock { doTranscribeVad(audioPath) }
+
+    private suspend fun doTranscribeVad(audioPath: String): String {
+        val model = ensureLoaded() ?: error("no resident model to transcribe")
+        val (languageMode, language) = residentLanguage()
+        val vad = vadFactory?.invoke()
+            ?: return engine.transcribe(model, audioPath, languageMode, language)
+        val samples = try {
+            AudioDecoder.decodeToMono16kSamples(audioPath)
+        } catch (t: Throwable) {
+            return engine.transcribe(model, audioPath, languageMode, language)
+        }
+        val chunks = segmentAudioWithVad(
+            samples = samples,
+            vad = vad,
+            padding = PAD_SAMPLES,
+            maxChunkSamples = MERGE_MAX_SAMPLES,
+        )
+        if (chunks.isEmpty()) return engine.transcribe(model, audioPath, languageMode, language)
+
+        _status.value = Status.Transcribing
+        val texts = mutableListOf<String>()
+        try {
+            chunks.forEachIndexed { index, chunk ->
+                val chunkFile = java.io.File(baseDir, "vad_chunk_$index.wav")
+                try {
+                    AudioDecoder.writePcm16Wav(chunkFile, chunk.samples, chunk.sampleRate)
+                    val text = engine.transcribe(model, chunkFile.absolutePath, languageMode, language).trim()
+                    if (text.isNotBlank()) texts += text
+                } finally {
+                    chunkFile.delete()
+                }
+            }
+        } finally {
+            _status.value = Status.Idle
+        }
+        return texts.joinToString(" ")
+    }
+
+    /** The resident model's language mode plus the user's language override, if any. */
+    private fun residentLanguage(): Pair<LanguageMode, String?> {
+        val resident = residentModel!!
+        val languageMode = resident.languageMode
+        val language = resident.canOverrideLanguage.takeIf { it }?.let {
+            _languageCode.value?.takeIf { code -> WhisperLanguages.supports(code) }
+        }
+        return languageMode to language
     }
 
     /**
