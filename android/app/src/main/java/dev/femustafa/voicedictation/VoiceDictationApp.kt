@@ -186,6 +186,7 @@ class VoiceDictationApp : Application() {
         private const val KEY_VAD_MIN_SPEECH = "vad_min_speech"
         private const val KEY_VAD_MAX_SPEECH = "vad_max_speech"
         private const val KEY_DOLPHIN_BEAM_SIZE = "dolphin_beam_size"
+        private const val KEY_STREAMING_MERGE = "streaming_merge"
         const val DEFAULT_VAD_THRESHOLD = 0.25f
         const val DEFAULT_VAD_MIN_SILENCE = 0.8f
         const val DEFAULT_VAD_MIN_SPEECH = 0.5f
@@ -250,4 +251,18 @@ class VoiceDictationApp : Application() {
     fun setDolphinBeamSize(v: Int) {
         prefs.edit().putInt(KEY_DOLPHIN_BEAM_SIZE, v).apply()
     }
+
+    // ---- Live merging (streaming; ticket 03) ----
+
+    /** Whether streaming sessions hold each phrased utterance ~1 s to rejoin a close
+     *  follow-up instead of decoding every VAD cut as its own partial. */
+    fun streamingMerge(): Boolean = prefs.getBoolean(KEY_STREAMING_MERGE, false)
+
+    fun setStreamingMerge(v: Boolean) {
+        prefs.edit().putBoolean(KEY_STREAMING_MERGE, v).apply()
+    }
+
+    /** The settle window (silent pushes) streaming sessions pass to their drainer, or
+     *  0 when live merging is off. Single source of truth for engines. */
+    fun vadMergeSettleWindows(): Int = if (streamingMerge()) MERGE_SETTLE_WINDOWS else 0
 }

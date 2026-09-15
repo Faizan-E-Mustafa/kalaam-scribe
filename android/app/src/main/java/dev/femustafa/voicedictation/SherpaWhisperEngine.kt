@@ -171,7 +171,8 @@ class SherpaWhisperEngine(
         vadConfig.provider = "cpu"
         val vad = com.k2fsa.sherpa.onnx.Vad(null, vadConfig)
         val vadLike = SherpaVad(vad)
-        return SherpaOfflineSession(real.recognizer, waveWriter, resolvedLanguage, real, context, vadLike)
+        return SherpaOfflineSession(real.recognizer, waveWriter, resolvedLanguage, real, context, vadLike,
+            mergeSettleWindows = VoiceDictationApp.from(context).vadMergeSettleWindows())
     }
 
     /**

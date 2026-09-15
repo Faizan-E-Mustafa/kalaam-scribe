@@ -51,6 +51,7 @@ internal open class SherpaOfflineSession(
     private val modelRef: SherpaWhisperEngine.SherpaModelRef?, // Null for Dolphin CTC
     private val context: Context?,
     private val vadLike: VadLike,
+    mergeSettleWindows: Int = 0,
 ) : TranscriptionSession {
 
     /** Production ctor: keep the existing call site unchanged by wrapping a real
@@ -62,6 +63,7 @@ internal open class SherpaOfflineSession(
         modelRef: SherpaWhisperEngine.SherpaModelRef?,
         context: Context,
         vadLike: VadLike,
+        mergeSettleWindows: Int = 0,
     ) : this(
         recognizer = recognizer,
         recognizerLike = null,
@@ -70,6 +72,7 @@ internal open class SherpaOfflineSession(
         modelRef = modelRef,
         context = context,
         vadLike = vadLike,
+        mergeSettleWindows = mergeSettleWindows,
     )
 
     /** Test ctor: skip the language-apply init, no recognizer needed. */
@@ -77,6 +80,7 @@ internal open class SherpaOfflineSession(
         recognizerLike: SherpaRecognizerLike,
         waveWriter: WaveWriter,
         vadLike: VadLike,
+        mergeSettleWindows: Int = 0,
     ) : this(
         recognizer = null,
         recognizerLike = recognizerLike,
@@ -85,6 +89,7 @@ internal open class SherpaOfflineSession(
         modelRef = null,
         context = null,
         vadLike = vadLike,
+        mergeSettleWindows = mergeSettleWindows,
     )
 
     private inner class SherpaRecognizerAdapter : SherpaRecognizerLike {
@@ -138,7 +143,8 @@ internal open class SherpaOfflineSession(
 
     // Live VAD drainer for streaming segmentation. Padding (PAD_SAMPLES both sides)
     // wraps each segment so words at the VAD boundary are not clipped by decode.
-    private val vadDrainer = LiveVadDrainer(vadLike, padding = PAD_SAMPLES)
+    // mergeSettleWindows > 0 turns on live merging (ticket 03).
+    private val vadDrainer = LiveVadDrainer(vadLike, padding = PAD_SAMPLES, mergeSettleWindows = mergeSettleWindows)
 
     // The decode worker. Kept so [flush] can join it and thus never drop segments
     // still queued when recording stops.

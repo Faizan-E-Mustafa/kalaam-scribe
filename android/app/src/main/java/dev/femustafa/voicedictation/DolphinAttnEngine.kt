@@ -284,7 +284,8 @@ open class DolphinAttnEngine(
         }
         residentVad.reset()
         val vadLike = SherpaVad(residentVad)
-        return DolphinAttnSession(this, ref, waveWriter, context, vadLike)
+        return DolphinAttnSession(this, ref, waveWriter, context, vadLike,
+            mergeSettleWindows = VoiceDictationApp.from(context).vadMergeSettleWindows())
     }
 
     override fun release(model: WhisperModelRef) {

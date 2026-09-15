@@ -122,7 +122,8 @@ class OmnilingualEngine(
         val vad = com.k2fsa.sherpa.onnx.Vad(null, vadConfig)
         val vadLike = SherpaVad(vad)
         // Omnilingual doesn't use language override, pass empty string
-        return SherpaOfflineSession(real.recognizer, waveWriter, "", null, context, vadLike)
+        return SherpaOfflineSession(real.recognizer, waveWriter, "", null, context, vadLike,
+            mergeSettleWindows = VoiceDictationApp.from(context).vadMergeSettleWindows())
     }
 
     override fun release(model: WhisperModelRef) {

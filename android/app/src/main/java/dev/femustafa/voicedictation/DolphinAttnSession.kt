@@ -35,6 +35,7 @@ internal open class DolphinAttnSession(
     private val waveWriter: WaveWriter,
     private val context: Context?,
     private val vadLike: VadLike,
+    mergeSettleWindows: Int = 0,
 ) : TranscriptionSession {
 
     /** Production ctor: keeps the existing call site unchanged. The engine is a
@@ -45,6 +46,7 @@ internal open class DolphinAttnSession(
         waveWriter: WaveWriter,
         context: Context?,
         vadLike: VadLike,
+        mergeSettleWindows: Int = 0,
     ) : this(
         engine = engine,
         recognizerLike = null,
@@ -52,6 +54,7 @@ internal open class DolphinAttnSession(
         waveWriter = waveWriter,
         context = context,
         vadLike = vadLike,
+        mergeSettleWindows = mergeSettleWindows,
     )
 
     /** Test ctor: skip the engine and drive decoding through a fake [DolphinRecognizerLike]. */
@@ -60,6 +63,7 @@ internal open class DolphinAttnSession(
         modelRef: DolphinAttnEngine.DolphinAttnModelRef,
         waveWriter: WaveWriter,
         vadLike: VadLike,
+        mergeSettleWindows: Int = 0,
     ) : this(
         engine = null,
         recognizerLike = recognizerLike,
@@ -67,6 +71,7 @@ internal open class DolphinAttnSession(
         waveWriter = waveWriter,
         context = null,
         vadLike = vadLike,
+        mergeSettleWindows = mergeSettleWindows,
     )
 
     /** Resolve the decode hook: prefer the test seam if set, else the engine. */
@@ -105,7 +110,8 @@ internal open class DolphinAttnSession(
 
     // Live VAD drainer for streaming segmentation. Padding (PAD_SAMPLES both sides)
     // wraps each segment so words at the VAD boundary are not clipped by decode.
-    private val vadDrainer = LiveVadDrainer(vadLike, padding = PAD_SAMPLES)
+    // mergeSettleWindows > 0 turns on live merging (ticket 03).
+    private val vadDrainer = LiveVadDrainer(vadLike, padding = PAD_SAMPLES, mergeSettleWindows = mergeSettleWindows)
 
     // The decode worker. Kept so [flush] can join it and thus never drop segments
     // still queued when recording stops.

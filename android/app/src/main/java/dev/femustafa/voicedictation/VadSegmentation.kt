@@ -172,53 +172,128 @@ internal fun mergeSegments(
  * at end-of-input may have less than [padding] post-padding). Keeping this in the
  * shared drainer makes all three backends (sherpa Whisper, Dolphin CTC, Dolphin
  * attention) pad identically.
+ *
+ * Live merging (ticket 03) is opt-in via [mergeSettleWindows] > 0. Closed utterances
+ * are then held instead of emitted, and only released when [mergeSettleWindows]
+ * consecutive silent windows arrive with no new speech (the settle window ≈ 900 ms),
+ * when the held span would hit [maxChunkSamples], or at [flushAndDrain]. Releasing
+ * builds one continuous source-backed chunk over [pending.first().start .. last.end],
+ * padded once at its outer edges — the same pipeline as the batch [mergeSegments]
+ * path, so streaming merges excuses mid-sentence VAD cuts without re-introducing
+ * clipping. The trade-off is publish latency: a phrase's partial now appears ~1 s
+ * after speech ends (VAD tail + settle) so a close follow-up can be rejoined.
  */
 internal class LiveVadDrainer(
     private val vad: VadLike,
     private val padding: Int = 0,
+    mergeSettleWindows: Int = 0,
+    private val maxChunkSamples: Int = MERGE_MAX_SAMPLES,
 ) {
 
+    /** Live merge is on when a settle count of silent windows is requested. */
+    private val merging = mergeSettleWindows > 0
+
+    /** Consecutive silent windows that close out a held chunk (0 = never settle). */
+    private val settleWindows = mergeSettleWindows
+
     // Rolling source audio window (absolute index of source.buf[0] = sourceStart).
-    // Only maintained when padding > 0. Pruned after each drain to the previous
-    // segment's end minus padding, so memory tracks roughly one utterance at a time.
+    // Maintained when padding > 0 (padded slices) or merging (merged source-backed
+    // chunks). Pruned to the held chunk's pre-pad edge (or a padding-sized rolling
+    // tail when nothing is held), so memory tracks roughly one chunk at a time.
     private val source = GrowingFloatArray()
     private var sourceStart = 0
+
+    // Closed utterances held until the merge decision (live merge) or cap/flush.
+    private val pending = ArrayList<SpeechSegment>()
+
+    // Consecutive pushed windows since the last window with speech (live merge).
+    private var silentWindows = 0
 
     /** Push one window (up to [VAD_WINDOW] samples) to the VAD and return any
      *  segments it just closed. Empty list = no closed segments this window. */
     fun push(window: FloatArray): List<SpeechSegment> {
         if (window.isEmpty()) return emptyList()
-        if (padding > 0) source.append(window)
+        if (padding > 0 || merging) source.append(window)
         vad.acceptWaveform(window)
-        if (!vad.isSpeechDetected()) return emptyList()
-        return drainQueue()
+        if (vad.isSpeechDetected()) {
+            silentWindows = 0
+            return drainQueue()
+        }
+        silentWindows++
+        if (merging && pending.isNotEmpty() && silentWindows >= settleWindows) {
+            return emitPending()
+        }
+        return emptyList()
     }
 
     /** Signal end-of-input: flush the VAD's internal buffer and return the
      *  trailing tail segment(s), if any. */
     fun flushAndDrain(): List<SpeechSegment> {
         vad.flush()
-        return drainQueue()
+        val out = drainQueue().toMutableList()
+        if (merging && pending.isNotEmpty()) out += emitPending()
+        return out
     }
 
     private fun drainQueue(): List<SpeechSegment> {
         val out = mutableListOf<SpeechSegment>()
-        var keepFrom = -1
         while (!vad.isEmpty()) {
             vad.front()?.let { raw ->
-                out += pad(raw)
-                // Pre-padding for the NEXT segment needs up to [padding] samples before
-                // its start (>= raw.end), so retain from raw.end - padding onward.
-                keepFrom = maxOf(keepFrom, raw.start + raw.samples.size - padding)
+                if (merging) {
+                    pending += raw
+                    if (pendingSpan() >= maxChunkSamples) out += emitPending()
+                } else {
+                    out += pad(raw)
+                }
             }
             vad.pop()
         }
-        if (padding > 0 && keepFrom > sourceStart) {
+        if (merging) {
+            pruneFrontier()
+        }
+        return out
+    }
+
+    /** Drop source audio no future chunk can need: up to [padding] before the held
+     *  chunk's first start, or a rolling [padding]-sized tail when nothing is held. */
+    private fun pruneFrontier() {
+        val frontier = if (pending.isEmpty()) sourceStart + source.size - padding
+                       else pending.first().start - padding
+        if (frontier > sourceStart) {
+            val dropCount = min(frontier - sourceStart, source.size)
+            source.drop(dropCount)
+            sourceStart += dropCount
+        }
+    }
+
+    /** Span of the held chunk (first start .. last end), or 0 when empty. */
+    private fun pendingSpan(): Int {
+        if (pending.isEmpty()) return 0
+        val last = pending.last()
+        return last.start + last.samples.size - pending.first().start
+    }
+
+    /** Release the held utterances as one merged, source-backed, padded chunk and
+     *  prune the source to the next chunk's pre-pad baseline. */
+    private fun emitPending(): List<SpeechSegment> {
+        if (pending.isEmpty()) return emptyList()
+        val first = pending.first()
+        val last = pending.last()
+        val segEnd = last.start + last.samples.size
+        val relFrom = (first.start - sourceStart).coerceAtLeast(0)
+        val relTo = minOf(segEnd - sourceStart, source.size)
+        val merged = SpeechSegment(first.start, source.buf.copyOfRange(relFrom, relTo), first.sampleRate)
+        // Pad BEFORE pruning: pad() reads pre/post margins from the live source window.
+        val padded = pad(merged)
+        pending.clear()
+        // The next chunk's pre-pad can start no earlier than last.end - padding.
+        val keepFrom = segEnd - padding
+        if (keepFrom > sourceStart) {
             val dropCount = min(keepFrom - sourceStart, source.size)
             source.drop(dropCount)
             sourceStart += dropCount
         }
-        return out
+        return listOf(padded)
     }
 
     /** Expand [seg] with up to [padding] samples before and after it from [source]. */
@@ -295,6 +370,16 @@ internal const val MERGE_MAX_MS = 28_000
 
 /** The merge cap in samples at 16 kHz: 28 s × 16 kHz = 448,000. */
 internal const val MERGE_MAX_SAMPLES = MERGE_MAX_MS * SAMPLE_RATE / 1000
+
+/**
+ * Live-merge settle window (ms): how long the drainer holds a closed utterance (the
+ * VAD tail already consumed ~0.5 s) waiting for a close follow-up before decoding it
+ * alone. Short enough to feel live, long enough to catch a mid-sentence pause.
+ */
+internal const val MERGE_SETTLE_MS = 900
+
+/** The settle window expressed in [VAD_WINDOW]-sample pushes: 900 ms × 16 kHz / 512. */
+internal const val MERGE_SETTLE_WINDOWS = MERGE_SETTLE_MS * SAMPLE_RATE / 1000 / VAD_WINDOW
 
 // Extension function to convert ShortArray to FloatArray
 internal fun ShortArray.toFloatArray(sampleRate: Int): FloatArray {
