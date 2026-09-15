@@ -33,10 +33,11 @@ internal class EngineTranscriptionSession(
     private val vad: VadLike,
     private val decodeSegment: suspend (FloatArray) -> String,
     private val decodeWhole: suspend (FloatArray) -> String,
+    private val padding: Int = PAD_SAMPLES,
     private val logger: (String, String) -> Unit = { tag, msg -> android.util.Log.w(tag, msg) },
 ) : TranscriptionSession {
 
-    private val drainer = LiveVadDrainer(vad)
+    private val drainer = LiveVadDrainer(vad, padding = padding)
 
     /** Worker owns all decoding; unbounded so no segment is ever dropped (loss would
      *  corrupt the final joined transcript). Decode outpaces capture in practice. */

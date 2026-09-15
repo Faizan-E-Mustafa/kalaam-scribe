@@ -57,7 +57,7 @@ class EngineTranscriptionSessionTest {
         val seg1 = SpeechSegment(0, FloatArray(100) { 1f })
         val seg2 = SpeechSegment(600, FloatArray(200) { 2f })
         val vad = FakeVad(segmentPlan = mapOf(1 to listOf(seg1), 2 to listOf(seg2)))
-        val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" })
+        val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" }, padding = 0)
 
         val got = mutableListOf<String>()
         val collector = launch { session.partials.collect { got += it } }
@@ -85,7 +85,7 @@ class EngineTranscriptionSessionTest {
             segmentPlan = mapOf(0 to listOf(early)),
             flushSegments = listOf(tail),
         )
-        val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" })
+        val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" }, padding = 0)
 
         val got = mutableListOf<String>()
         val collector = launch { session.partials.collect { got += it } }
@@ -108,7 +108,7 @@ class EngineTranscriptionSessionTest {
         val session = EngineTranscriptionSession(vad, ::decodeByLength, { audio ->
             wholeAudioSize = audio.size
             "FALLBACK"
-        }, logger = { _, _ -> })
+        }, padding = 0, logger = { _, _ -> })
 
         val got = mutableListOf<String>()
         val collector = launch { session.partials.collect { got += it } }
@@ -129,7 +129,7 @@ class EngineTranscriptionSessionTest {
         val seg = SpeechSegment(0, FloatArray(100) { 1f })
         val vad = FakeVad(segmentPlan = mapOf(0 to listOf(seg)))
         // Every segment decodes to blank → whole-clip fallback (ticket-30 semantics).
-        val session = EngineTranscriptionSession(vad, { "" }, { "FALLBACK" }, logger = { _, _ -> })
+        val session = EngineTranscriptionSession(vad, { "" }, { "FALLBACK" }, padding = 0, logger = { _, _ -> })
 
         session.accept(shortsOf(1, 512))
         val full = session.flush("")
@@ -141,7 +141,7 @@ class EngineTranscriptionSessionTest {
     fun acceptYieldsToWorkerBeforeFlushJoins() = runBlocking {
         val seg = SpeechSegment(0, FloatArray(100) { 1f })
         val vad = FakeVad(segmentPlan = mapOf(0 to listOf(seg)))
-        val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" })
+        val session = EngineTranscriptionSession(vad, ::decodeByLength, { "whole" }, padding = 0)
 
         session.accept(shortsOf(1, 512))
         yield()
