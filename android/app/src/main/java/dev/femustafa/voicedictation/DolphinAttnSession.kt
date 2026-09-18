@@ -103,9 +103,8 @@ internal open class DolphinAttnSession(
     @Volatile
     private var isClosed = false
 
-    // Live VAD drainer for streaming segmentation. Padding (PAD_SAMPLES both sides)
-    // wraps each segment so words at the VAD boundary are not clipped by decode.
-    private val vadDrainer = LiveVadDrainer(vadLike, padding = PAD_SAMPLES)
+    // Live VAD drainer for streaming segmentation
+    private val vadDrainer = LiveVadDrainer(vadLike)
 
     // The decode worker. Kept so [flush] can join it and thus never drop segments
     // still queued when recording stops.
