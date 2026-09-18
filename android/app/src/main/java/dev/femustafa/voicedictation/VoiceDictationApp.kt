@@ -86,12 +86,16 @@ class VoiceDictationApp : Application() {
     }
 
     /**
-     * Whether the user has completed first-run language onboarding (picked a
-     * concrete language). Onboarding is required before dictation because the
-     * model list is filtered by it; the choice stays editable afterwards via the
-     * Models screen's Language dropdown.
+     * Whether the user has moved past the Continue button on the first-run
+     * welcome screen. Onboarding keeps re-appearing until then, even if a
+     * language was already picked from the dropdown.
      */
-    fun hasSelectedLanguage(): Boolean = prefs.contains(KEY_LANGUAGE_CODE)
+    fun onboardingComplete(): Boolean = prefs.contains(KEY_ONBOARDING_DONE)
+
+    /** Persist that the user has finished first-run onboarding (pressed Continue). */
+    fun completeOnboarding() {
+        prefs.edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
+    }
 
     /** Persist + publish a user-picked whisper language code (null/blank = auto). */
     fun setLanguageCode(code: String?) {
@@ -155,6 +159,7 @@ class VoiceDictationApp : Application() {
     companion object {
         private const val PREFS_NAME = "voice_dictation"
         private const val KEY_LANGUAGE_CODE = "language_code"
+        private const val KEY_ONBOARDING_DONE = "onboarding_done"
         private const val KEY_MODEL_ID = "model_id"
         private const val KEY_WHISPER_THREADS = "whisper_threads"
         private const val KEY_TRANSCRIPTION_MODE = "transcription_mode"

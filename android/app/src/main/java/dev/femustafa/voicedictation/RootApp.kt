@@ -23,8 +23,9 @@ fun RootApp() {
 
     var showSettings by remember { mutableStateOf(false) }
     // First run: ask the dictation language before showing the app, so the model
-    // list can be filtered by it. Dismissed permanently once a language is chosen.
-    var showOnboarding by remember { mutableStateOf(!app.hasSelectedLanguage()) }
+    // list can be filtered by it. Stays on-screen until the user taps Continue,
+    // even if a language was already picked from the dropdown.
+    var showOnboarding by remember { mutableStateOf(!app.onboardingComplete()) }
 
     if (showOnboarding) {
         LanguageOnboardingScreen(
@@ -32,7 +33,10 @@ fun RootApp() {
             onSelect = { entry -> pickerViewModel.select(entry, manager) },
             onDownload = { entry -> pickerViewModel.download(entry, manager) },
             onLanguageChange = { code -> app.setLanguageCode(code) },
-            onContinue = { showOnboarding = false },
+            onContinue = {
+                app.completeOnboarding()
+                showOnboarding = false
+            },
         )
     } else {
         DictationScreen(
