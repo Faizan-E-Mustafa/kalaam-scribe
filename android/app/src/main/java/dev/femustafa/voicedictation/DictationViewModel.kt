@@ -76,11 +76,7 @@ class DictationViewModel(
                         src.absolutePath,
                         File(ctx.filesDir, "upload_16k.wav").absolutePath,
                     )
-                    if (app.transcriptionMode == TranscriptionMode.BatchVad) {
-                        app.whisper.transcribeVad(decoded)
-                    } else {
-                        app.whisper.transcribe(decoded)
-                    }
+                    app.whisper.transcribe(decoded)
                 }
                 app.setLastTranscriptionMs(SystemClock.elapsedRealtime() - start)
                 app.setTranscript(text)

@@ -47,27 +47,6 @@ object AudioDecoder {
             )
         }
 
-    /** Decode [srcPath] (WAV or MP3) into mono float samples resampled to 16 kHz —
-     *  the rate the VAD and the ASR models expect. */
-    fun decodeToMono16kSamples(srcPath: String): FloatArray {
-        val decoded = decodeSamples(srcPath)
-        return resampleToMono16k(decoded.samples, decoded.sampleRate)
-    }
-
-    /** Write [samples] as a 16-bit PCM mono WAV at [sampleRate]. */
-    fun writePcm16Wav(dst: File, samples: FloatArray, sampleRate: Int) {
-        FileOutputStream(dst).use { out ->
-            out.write(wavHeader(sampleRate, samples.size * 2))
-            val bytes = ByteArray(samples.size * 2)
-            for (i in samples.indices) {
-                val v = (samples[i].coerceIn(-1f, 1f) * 32767).toInt()
-                bytes[i * 2] = (v and 0xFF).toByte()
-                bytes[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
-            }
-            out.write(bytes)
-        }
-    }
-
     /** Mono float samples plus the sample rate they were captured at. */
     data class DecodedAudio(val samples: FloatArray, val sampleRate: Int)
 
@@ -212,6 +191,20 @@ object AudioDecoder {
             out[i] = samples[i0] * (1f - frac) + samples[i1] * frac
         }
         return out
+    }
+
+    /** Write [samples] as a 16-bit PCM mono WAV at [sampleRate]. */
+    private fun writePcm16Wav(dst: File, samples: FloatArray, sampleRate: Int) {
+        FileOutputStream(dst).use { out ->
+            out.write(wavHeader(sampleRate, samples.size * 2))
+            val bytes = ByteArray(samples.size * 2)
+            for (i in samples.indices) {
+                val v = (samples[i].coerceIn(-1f, 1f) * 32767).toInt()
+                bytes[i * 2] = (v and 0xFF).toByte()
+                bytes[i * 2 + 1] = ((v shr 8) and 0xFF).toByte()
+            }
+            out.write(bytes)
+        }
     }
 
     /** 44-byte canonical PCM 16-bit mono WAV header (same shape [AudioRecorder] writes). */
