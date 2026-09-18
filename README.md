@@ -19,8 +19,8 @@ The app is driven by ONNX ASR engines: **sherpa-onnx Whisper** for English / mul
 - ✅ **100% on-device** — transcription runs locally, no audio ever leaves the phone
 - ✅ **Dual ASR engines** — ONNX Whisper (sherpa-onnx) and Dolphin attention (onnxruntime)
 - ✅ **Language-aware model picker** — English, Roman-Urdu, Urdu, and auto-detect
-- ✅ **Silero VAD segmentation** — speech split into utterances with padding + merging for accurate boundaries
-- ✅ **Three transcription modes** — Batch, Batch + VAD, and live simulated streaming
+- ✅ **Silero VAD segmentation** — live speech split into utterances for streaming dictation
+- ✅ **Two transcription modes** — Batch and simulated streaming
 - ✅ **Resident model** — loaded once, reused across dictations (no reload per clip)
 - ✅ **In-app model download** — models fetched from HuggingFace with progress
 - ✅ **File transcription** — transcribe a WAV/MP3 from your picker
@@ -89,7 +89,6 @@ The APK lands at `app/build/outputs/apk/debug/app-debug.apk`. For the full toolc
 | Mode | Behaviour |
 |------|-----------|
 | **Batch** | One decode of the whole clip after Stop — simplest, works on every backend |
-| **Batch + VAD** | Silero VAD splits the clip, merges utterances into ≤28 s chunks, pads each, decodes in order |
 | **Simulated streaming** | Live VAD decodes each utterance as you speak, growing the transcript in real time |
 
 The default is **Roman-Urdu · int8** (`roman-urdu-int8`), and the picker recommends Whisper · Balanced for English, Roman-Urdu for the Roman-Urdu language, and Dolphin · Balanced for Urdu.
