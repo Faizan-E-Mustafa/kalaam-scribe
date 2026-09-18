@@ -130,8 +130,7 @@ class DolphinCtcEngine(
         val vad = com.k2fsa.sherpa.onnx.Vad(null, vadConfig)
         val vadLike = SherpaVad(vad)
         // Dolphin CTC doesn't use language override, pass empty string
-        return SherpaOfflineSession(real.recognizer, waveWriter, "", null, context, vadLike,
-            mergeSettleWindows = VoiceDictationApp.from(context).vadMergeSettleWindows())
+        return SherpaOfflineSession(real.recognizer, waveWriter, "", null, context, vadLike)
     }
 
     override fun release(model: WhisperModelRef) {

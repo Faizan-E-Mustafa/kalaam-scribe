@@ -38,7 +38,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -98,7 +97,6 @@ fun AdvancedSettingsSheet(
     var minSpeech by remember { mutableStateOf(app.vadMinSpeech()) }
     var maxSpeech by remember { mutableStateOf(app.vadMaxSpeech()) }
     var beamSize by remember { mutableStateOf(app.dolphinBeamSize().toFloat()) }
-    var streamingMerge by remember { mutableStateOf(app.streamingMerge()) }
 
     val state by viewModel.state.collectAsState()
     val selectedId by viewModel.selectedId.collectAsState()
@@ -196,23 +194,6 @@ fun AdvancedSettingsSheet(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            if (transcriptionMode == TranscriptionMode.SimulatedStreaming) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text("Merge phrases", fontSize = 14.sp, modifier = Modifier.weight(1f))
-                    Switch(checked = streamingMerge, onCheckedChange = { streamingMerge = it })
-                }
-                Text(
-                    text = "Holds each phrase ~1s to rejoin a close follow-up, instead of decoding every VAD cut as its own partial.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
             HorizontalDivider()
 
             // Collapsible power-user settings, collapsed by default.
@@ -279,7 +260,6 @@ fun AdvancedSettingsSheet(
                         minSpeech = VoiceDictationApp.DEFAULT_VAD_MIN_SPEECH
                         maxSpeech = VoiceDictationApp.DEFAULT_VAD_MAX_SPEECH
                         beamSize = VoiceDictationApp.DEFAULT_DOLPHIN_BEAM_SIZE.toFloat()
-                        streamingMerge = false
                     },
                 ) {
                     Text("Reset", fontSize = 14.sp)
@@ -294,7 +274,6 @@ fun AdvancedSettingsSheet(
                         app.setVadMinSpeech(minSpeech)
                         app.setVadMaxSpeech(maxSpeech)
                         app.setDolphinBeamSize(beamSize.toInt())
-                        app.setStreamingMerge(streamingMerge)
                         dismiss()
                     },
                 ) {
