@@ -163,7 +163,7 @@ internal open class DolphinAttnSession(
         // reflects what the UI showed live (a subset of decodedTexts), so prepending it would
         // duplicate segments — decodedTexts already includes them. We ignore it here.
         val finalTranscript =
-            if (decodedTexts.isNotEmpty()) decodedTexts.joinToString(" ")
+            if (decodedTexts.isNotEmpty()) decodedTexts.fold("") { acc, t -> if (acc.isEmpty()) t else seamMerge(acc, t) }
             else {
                 Log.w(TAG, "No VAD segments, falling back to whole-clip decode.")
                 val fullWave = waveWriter.flush()
@@ -197,7 +197,7 @@ internal open class DolphinAttnSession(
             .asSequence()
             .map { decodeSegmentOnce(it).trim() }
             .filter { it.isNotEmpty() }
-            .joinToString(" ")
+            .fold("") { acc, t -> if (acc.isEmpty()) t else seamMerge(acc, t) }
     }
 
     private fun decodeSegmentOnce(samples: ShortArray): String {

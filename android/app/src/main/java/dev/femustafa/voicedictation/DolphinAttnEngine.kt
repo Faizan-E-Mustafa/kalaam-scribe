@@ -284,10 +284,14 @@ open class DolphinAttnEngine(
                         TAG,
                         "long clip ${"%.1f".format(audio.size / SAMPLE_RATE.toDouble())}s -> ${chunks.size} chunks"
                     )
-                    chunks.asSequence()
-                        .map { decodeTokens(ref, beamSearch(ref, it)).trim() }
-                        .filter { it.isNotEmpty() }
-                        .joinToString(" ")
+                    var acc: String? = null
+                    for (chunk in chunks) {
+                        val t = decodeTokens(ref, beamSearch(ref, chunk)).trim()
+                        if (t.isNotEmpty()) {
+                            acc = if (acc == null) t else seamMerge(acc!!, t)
+                        }
+                    }
+                    acc ?: ""
                 }
             }
         } catch (e: Exception) {
@@ -851,4 +855,50 @@ internal fun decodeDolphinPieces(pieces: List<String>): String {
         }
     }
     return sb.toString().trimStart()
+}
+
+/**
+ * Merge adjacent segments by removing word-level overlaps at chunk boundaries.
+ * Given two strings a (previous chunk) and b (next chunk), compares the last
+ * `windowWords` words of a with the first `windowWords` words of b. If a
+ * contiguous word-run of at least `minMatchWords` words is found, the matched
+ * run is dropped from b (left wins). Otherwise the segments are joined unchanged.
+ * Addresses the seam duplication artifact seen in long-audio streaming.
+ */
+internal fun seamMerge(
+    a: String,
+    b: String,
+    windowWords: Int = 12,
+    minMatchWords: Int = 4,
+): String {
+    val aw = a.trim().split(" ").filter { it.isNotEmpty() }
+    val bw = b.trim().split(" ").filter { it.isNotEmpty() }
+
+    var bestSize = 0
+    var bestAi = -1
+    var bestBj = -1
+
+    val tail = aw.takeLast(windowWords)
+    val head = bw.take(windowWords)
+
+    for (i in tail.indices) {
+        for (j in head.indices) {
+            var k = 0
+            while (i + k < tail.size && j + k < head.size && tail[i + k] == head[j + k]) {
+                k++
+            }
+            if (k > bestSize) {
+                bestSize = k
+                bestAi = i
+                bestBj = j
+            }
+        }
+    }
+
+    return if (bestSize >= minMatchWords) {
+        val keepB = bw.take(bestBj) + bw.drop(bestBj + bestSize)
+        (aw + keepB).joinToString(" ")
+    } else {
+        (aw + bw).joinToString(" ")
+    }
 }
