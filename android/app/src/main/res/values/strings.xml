@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">Voice Dictation</string>
+    <string name="app_name">Kalaam Scribe</string>
     <string name="settings_whisper_threads">Whisper threads</string>
     <string name="settings_threads_summary">Number of CPU threads for on-device transcription. Auto-selected on first run; change here to override.</string>
 </resources>

@@ -38,5 +38,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "VoiceDictation"
+rootProject.name = "Kalaam Scribe"
 include(":app")

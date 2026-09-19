@@ -5,11 +5,11 @@ plugins {
 }
 
 android {
-    namespace = "dev.femustafa.voicedictation"
+    namespace = "dev.femustafa.kalaamscribe"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "dev.femustafa.voicedictation"
+        applicationId = "dev.femustafa.kalaamscribe"
         minSdk = 26
         targetSdk = 35
         versionCode = 1

@@ -1,6 +1,6 @@
-# 🎙️ Voice Dictation (Local)
+# 🎙️ Kalaam Scribe (Local)
 
-> Fully on-device dictation for WhatsApp. No cloud, no WhatsApp API — your voice never leaves the phone.
+> Fully on-device dictation. No cloud, no API — your voice never leaves the phone. Paste the transcript anywhere.
 
 [![Platform](https://img.shields.io/badge/platform-Android%208.0%2B-blue)]()
 [![Engine](https://img.shields.io/badge/engine-ONNX%20Whisper%20%2B%20Dolphin%20ASR-purple)]()
@@ -10,7 +10,7 @@
 
 ## Overview
 
-A native **Android app** (Kotlin + Jetpack Compose) that turns spoken messages into text entirely on-device. Tap record, speak, stop — the transcript is copied to the clipboard, ready to paste into WhatsApp. Everything runs on the phone; the only internet use is the one-time download of your chosen ASR model.
+A native **Android app** (Kotlin + Jetpack Compose) that turns spoken messages into text entirely on-device. Tap record, speak, stop — the transcript is copied to the clipboard, ready to paste into any app. Everything runs on the phone; the only internet use is the one-time download of your chosen ASR model.
 
 The app is driven by ONNX ASR engines: **sherpa-onnx Whisper** for English / multilingual / Roman-Urdu transcription, and **Dolphin attention ASR** (onnxruntime) for Urdu-script dictation.
 
@@ -59,6 +59,7 @@ The APK lands at `app/build/outputs/apk/debug/app-debug.apk`. For the full toolc
 1. Pick your dictation language (English, Roman-Urdu, Urdu, or auto-detect).
 2. Download the recommended model (or any model from the picker).
 3. Tap the mic, speak, tap stop — the transcript is copied to the clipboard and a notification shows your dictation history.
+4. Paste the transcript into any app (Notes, Messages, Email, etc.).
 
 ## Long-Audio Handling
 
@@ -86,7 +87,7 @@ is the post-processing that makes its residual artifact acceptable.
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                    Voice Dictation                  │
+│                    Kalaam Scribe                  │
 │                      (Android app)                  │
 │                                                     │
 │  ┌───────────────┐   ┌───────────────────────────┐  │

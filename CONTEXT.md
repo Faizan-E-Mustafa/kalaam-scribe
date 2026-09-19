@@ -1,13 +1,11 @@
-# Voice Dictation (Local)
+# Kalaam Scribe (Local)
 
-Converts spoken input into WhatsApp message text entirely on-device (no cloud, no
-WhatsApp API). Runs as a Termux prototype on an Android device; the Linux desktop is
-only a development/validation harness.
+Converts spoken input into text entirely on-device (no cloud, no external API). Runs as a native Android app; the Linux desktop is only a development/validation harness.
 
 ## Language
 
 **Dictation**:
-Speaking into the mic to produce text the user then sends themselves.
+Speaking into the mic to produce text the user then copies/pastes.
 _Avoid_: Voice-to-text, transcription, automessaging
 
 **Transcript**:
@@ -16,7 +14,7 @@ _Avoid_: Caption, output, answer
 
 **Automessaging**:
 Programmatically sending a message without the user confirming it. Explicitly out
-of scope; it requires a WhatsApp API, which is rejected.
+of scope; it requires a third-party messaging API, which is rejected.
 _Avoid_: Auto-send, voice-reply
 
 **Dictation clip**:

@@ -1,4 +1,4 @@
-# Voice Dictation — Android build + on-device runbook
+# Kalaam Scribe — Android build + on-device runbook
 
 This documents how to reproduce, on a fresh machine, everything we did so far for
 the native Android app: installing the build toolchain, building the scaffold APK,
@@ -212,16 +212,16 @@ curl -fsSL -o android/spike/jfk.wav \
 adb push android/spike/ggml-base-q8_0.bin /data/local/tmp/
 adb push android/spike/jfk.wav /data/local/tmp/
 adb install -r android/app/build/outputs/apk/debug/app-debug.apk
-adb shell "run-as dev.femustafa.voicedictation sh -c 'cp /data/local/tmp/ggml-base-q8_0.bin /data/local/tmp/jfk.wav files/ && ls -la files/'"
+    adb shell "run-as dev.femustafa.kalaamscribe sh -c 'cp /data/local/tmp/ggml-base-q8_0.bin /data/local/tmp/jfk.wav files/ && ls -la files/'"
 ```
 
-> The app package id is `dev.femustafa.voicedictation`. A reinstall (`install -r`)
+> The app package id is `dev.femustafa.kalaamscribe`. A reinstall (`install -r`)
 > preserves app internal data, so the copies survive.
 
 ### 7d. Run and observe
 
 ```bash
-adb shell am start -n dev.femustafa.voicedictation/.MainActivity
+    adb shell am start -n dev.femustafa.kalaamscribe/.MainActivity
 # tap "Run spike (jfk.wav)" on the phone
 adb logcat -s WhisperSpike
 ```
@@ -239,7 +239,7 @@ WhisperSpike: spike complete
 ```bash
 adb shell rm -f /sdcard/Download/ggml-base-q8_0.bin /sdcard/Download/jfk.wav
 adb shell rm -f /data/local/tmp/ggml-base-q8_0.bin /data/local/tmp/jfk.wav
-adb uninstall dev.femustafa.voicedictation
+    adb uninstall dev.femustafa.kalaamscribe
 ```
 
 ---
