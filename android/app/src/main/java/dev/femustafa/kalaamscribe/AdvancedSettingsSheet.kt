@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -53,6 +54,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -83,6 +85,7 @@ fun AdvancedSettingsSheet(
     }
 
     var advancedExpanded by remember { mutableStateOf(false) }
+    var aboutDialogOpen by remember { mutableStateOf(false) }
     // Set when the language changes to a recommended model that isn't downloaded
     // yet; drives the "download the recommended model" confirmation dialog.
     var pendingDownload by remember { mutableStateOf<CatalogEntry?>(null) }
@@ -277,6 +280,26 @@ fun AdvancedSettingsSheet(
                     Text("Save", fontSize = 14.sp)
                 }
             }
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { aboutDialogOpen = true }
+                    .padding(vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = "About",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "About",
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier.padding(start = 8.dp),
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
@@ -305,6 +328,44 @@ fun AdvancedSettingsSheet(
             dismissButton = {
                 TextButton(onClick = { pendingDownload = null }) {
                     Text("Not now")
+                }
+            },
+        )
+    }
+
+    if (aboutDialogOpen) {
+        AlertDialog(
+            onDismissRequest = { aboutDialogOpen = false },
+            title = { Text("Kalaam Scribe") },
+            text = {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("Version 1 (1)")
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        "100% on-device — audio never leaves the phone",
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("Apache License 2.0")
+                    Spacer(modifier = Modifier.height(8.dp))
+                     Text(
+                        "Reach out for support, reviews, and feedback.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    val uriHandler = LocalUriHandler.current
+                    Text(
+                        "https://faizan-e-mustafa.github.io/",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { uriHandler.openUri("https://faizan-e-mustafa.github.io/") },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { aboutDialogOpen = false }) {
+                    Text("Close")
                 }
             },
         )

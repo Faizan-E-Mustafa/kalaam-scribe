@@ -3,4 +3,9 @@
     <string name="app_name">Kalaam Scribe</string>
     <string name="settings_whisper_threads">Whisper threads</string>
     <string name="settings_threads_summary">Number of CPU threads for on-device transcription. Auto-selected on first run; change here to override.</string>
+    <string name="about_title">About</string>
+    <string name="about_privacy">100% on-device — audio never leaves the phone</string>
+    <string name="about_license">Apache License 2.0</string>
+    <string name="about_portfolio">Portfolio: https://faizan-e-mustafa.github.io/</string>
+    <string name="about_support">Reach out for support, reviews, and feedback.</string>
 </resources>
