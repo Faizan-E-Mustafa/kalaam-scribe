@@ -23,6 +23,7 @@ import kotlin.math.exp
 import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * [WhisperEngine] backed directly by onnxruntime-android for the Dolphin attention
@@ -49,11 +50,23 @@ import kotlin.math.min
  * Vocabulary: `units.txt` id→symbol list; decode is SentencePiece `DecodePieces`
  * (leading `▁` → space, concatenate, trim leading space) without needing `bpe.model`.
  *
- * The batch path decodes each clip as a single whole-clip beam search (the highest
- * quality path, and the one the laptop verifier `verify_dakeqq_beam.py` validates).
- * The resident Silero VAD (`silero_vad.onnx` beside the encoder) is only used by the
- * simulated-streaming session ([DolphinAttnSession]), which splits a live clip into
- * per-utterance segments.
+ * The batch path decodes clips at or under the 14 s chunk cap as a single whole-clip
+ * beam search (the highest quality path, and the one the laptop verifier
+ * `verify_dakeqq_beam.py` validates). Longer clips are split by the resident Silero
+ * VAD into merged chunks that are hard-split to <= 14 s each and decoded independently,
+ * so the tail is never dropped.
+ *
+ * Two hard runtime limits shape the chunk size (verified empirically on ORT 1.27/1.30
+ * for both base and small):
+ *   - the decoder's fused SkipLayerNormalization kernel fails once the decoder KV
+ *     history exceeds 72 tokens (base and small identical), so a single decode may
+ *     emit at most ~66 content tokens after the 5-token ur/PK prefix;
+ *   - normal Urdu dictation runs ~2-4 tok/s, so a <= 14 s chunk stays under that
+ *     ceiling; the old flat 60-token generation cap silently truncated the tail of any
+ *     clip that needed more. [tokenBudget] also hard-caps generation at the kernel
+ *     ceiling as a belt-and-braces guard, trading a truncated tail for a crash.
+ * The same resident VAD also drives the simulated-streaming session
+ * ([DolphinAttnSession]), which splits a live clip into per-utterance segments.
  */
 
 /**
@@ -253,14 +266,59 @@ open class DolphinAttnEngine(
             val audio = readWaveShorts(audioPath)
                 ?: throw IOException("Failed to read wave file: $audioPath")
             Log.i(TAG, "transcribing ${audio.size} samples (${audio.size / SAMPLE_RATE.toDouble()} s)")
-            // Whole-clip decode: a single beam search over the full clip (the path that
-            // produces the best attention quality). The resident VAD is only used by the
-            // simulated-streaming session, never the batch path.
-            decodeTokens(ref, beamSearch(ref, audio))
+            // Clips at or under the 14 s chunk cap decode in a single beam search (the
+            // highest-quality path). Longer clips are VAD-segmented, merged and hard-split
+            // into <= 14 s chunks, and each chunk decoded independently so the tail is
+            // never dropped; a longer chunk would cross the decoder's 66-token kernel
+            // ceiling (SkipLayerNorm_0 fails at a 72-token KV history) and either
+            // truncate or crash.
+            if (audio.size <= DOLPHIN_MAX_SAMPLES) {
+                decodeTokens(ref, beamSearch(ref, audio))
+            } else {
+                val chunks = chunkAudio(ref, audio)
+                if (chunks.isEmpty()) {
+                    Log.w(TAG, "no VAD chunks for long clip; falling back to whole-clip decode")
+                    decodeTokens(ref, beamSearch(ref, audio))
+                } else {
+                    Log.i(
+                        TAG,
+                        "long clip ${"%.1f".format(audio.size / SAMPLE_RATE.toDouble())}s -> ${chunks.size} chunks"
+                    )
+                    chunks.asSequence()
+                        .map { decodeTokens(ref, beamSearch(ref, it)).trim() }
+                        .filter { it.isNotEmpty() }
+                        .joinToString(" ")
+                }
+            }
         } catch (e: Exception) {
             Log.e(TAG, "dolphin attention transcribe failed", e)
             throw e
         }
+    }
+
+    /**
+     * Split [audio] into ordered chunks of at most [DOLPHIN_MAX_SAMPLES] samples
+     * (~14 s), so each chunk's beam search stays under the decoder's 66-content-token
+     * kernel ceiling. The VAD merge passes a single over-limit utterance through
+     * untrimmed, so [splitChunksAtMost] hard-splits any piece that still exceeds the
+     * cap into equal sub-pieces: boundaries may fall mid-word, but every sample is
+     * decoded by exactly one piece, so nothing is dropped.
+     * Uses the resident Silero VAD from [DolphinAttnModelRef.vad] (reset first — ticket 31
+     * finding: the stateful VAD must not carry speech-start state across uses). Returns an
+     * empty list when the VAD is unavailable or yields no segments (caller falls back to a
+     * whole-clip decode).
+     */
+    private fun chunkAudio(ref: DolphinAttnModelRef, audio: ShortArray): List<ShortArray> {
+        val vad = ref.vad ?: return emptyList()
+        vad.reset()
+        return segmentAudioWithVad(
+            samples = audio.toFloatArray(SAMPLE_RATE),
+            vad = SherpaVad(vad),
+            padding = 0,
+            maxChunkSamples = DOLPHIN_MAX_SAMPLES,
+        ).map { seg ->
+            ShortArray(seg.samples.size) { (seg.samples[it] * 32767f).toInt().toShort() }
+        }.flatMap { splitChunksAtMost(it, DOLPHIN_MAX_SAMPLES) }
     }
 
     override suspend fun createSession(
@@ -351,11 +409,9 @@ open class DolphinAttnEngine(
             val finished = mutableListOf<Beam>()
             // Cap generation by audio length instead of a flat cap: normal Urdu dictation
             // runs ~2-3 tok/s but degenerate loops (ticket 29 Phase C/D) can otherwise burn
-            // all MAX_LEN steps. Budget worst-case tok/s of audio, plus small headroom.
-            val maxLen = max(
-                MIN_GEN_TOKENS,
-                min(MAX_LEN, audio.size / SAMPLE_RATE * TOK_PER_SEC_WORST + HEADROOM)
-            )
+            // all budget steps. Budget worst-case tok/s of audio, plus small headroom, and
+            // never exceed the decoder's 66-content-token kernel ceiling (SkipLayerNorm_0).
+            val maxLen = tokenBudget(audio.size)
             val t0 = SystemClock.elapsedRealtime()
             var runs = 0L
             for (step in 0 until maxLen) {
@@ -633,7 +689,14 @@ open class DolphinAttnEngine(
         /** Full-logits output name added by `add_logits_output.py` graph surgery. */
         const val OUTPUT_LOGITS = "/output_layer/Gemm_output_0"
 
-        private const val MAX_LEN = 60
+        /**
+         * Hard per-decode ceiling on generated content tokens: the decoder's fused
+         * SkipLayerNormalization kernel rejects a KV history beyond 72 tokens (after the
+         * 5-token prefix, that is 66 content tokens). Crossing it fails ORT with
+         * `ORT_INVALID_ARGUMENT` on SkipLayerNorm_0. [DOLPHIN_MAX_MS] is sized so normal
+         * speech never reaches 66, and [tokenBudget] never lets a decode exceed it.
+         */
+        private const val MAX_DECODER_CONTENT_TOKENS = 66
 
         const val SAMPLE_RATE = 16000
         /** Worst-case new-token rate per second of audio (degenerate loops ran ~16 tok/s). */
@@ -642,6 +705,113 @@ open class DolphinAttnEngine(
         private const val HEADROOM = 8
         /** Never allow fewer generated steps than this, even for very short clips. */
         private const val MIN_GEN_TOKENS = 8
+
+        /**
+         * Dolphin batch chunks may span at most this many ms. 14 s × ~4.1 tok/s ≈ 57
+         * content tokens, well under the 66-token decoder kernel ceiling, so a full
+         * chunk never truncates and never trips SkipLayerNorm_0. The Dolphin repo's
+         * 30 s `SPEECH_LENGTH` (ADR 0006) assumed no kernel ceiling; our 30 s chunks
+         * would need ~60-90 tokens (base fp16 ~2-4 tok/s) and overflow it, so the cap
+         * is 14 s instead. The ~4.1 tok/s worst case is measured from on-device Urdu:
+         * a 16 s cap left zero margin (a 17.8 s unbroken utterance hit all 66 tokens).
+         * [chunkAudio] hard-splits any oversized piece — preferring quiet pauses near the
+         * cap so boundaries don't land mid-word — because the VAD merge passes a single
+         * over-limit utterance through untrimmed.
+         */
+        private const val DOLPHIN_MAX_MS = 14_000
+
+        /** The Dolphin chunk cap in samples at 16 kHz: 14 s × 16 kHz = 224,000. */
+        private const val DOLPHIN_MAX_SAMPLES = DOLPHIN_MAX_MS * SAMPLE_RATE / 1000
+
+        /** Near-silence scan window for split points: 300 ms at 16 kHz. */
+        private const val RMS_WINDOW_SAMPLES = 4_800
+
+        /** Below this window RMS, a split landed in a pause rather than mid-speech. */
+        private const val QUIET_RMS = 320f
+
+        /**
+         * Cap generated decode steps for [sampleCount] samples of audio. Keeps the
+         * degenerate-loop bound (ticket 29 Phase C/D) proportional to audio length
+         * (worst-case tok/s plus headroom), while never exceeding the decoder's
+         * 66-content-token kernel ceiling ([MAX_DECODER_CONTENT_TOKENS]) — a decode is
+         * capped rather than allowed to crash ORT's SkipLayerNorm_0.
+         */
+        internal fun tokenBudget(sampleCount: Int): Int =
+            max(
+                MIN_GEN_TOKENS,
+                min(MAX_DECODER_CONTENT_TOKENS, sampleCount / SAMPLE_RATE * TOK_PER_SEC_WORST + HEADROOM),
+            )
+
+        /**
+         * Split [samples] into consecutive pieces of at most [maxSamples], preferring a
+         * split point inside a quiet (near-silent) window.
+         *
+         * [VadSegmentation.mergeSegments] passes a single over-limit utterance through
+         * untrimmed (the resident VAD won't split within unbroken speech), so without
+         * this the 14 s cap is only enforced between utterances and a dense long
+         * dictation can still burn all 66 budget tokens and truncate. A bare equal-ish
+         * split fixes that but can land mid-word on dense continuous speech, which makes
+         * a chunk run out of real audio, hallucinate to burn its budget, and join
+         * mid-sentence. So the last quarter of each candidate piece is scanned for a
+         * near-silent window first, and only if none exists (uninterruptedly loud
+         * audio) the split falls back to the hard cap. Consecutive samples are
+         * preserved in order; a buffer already at or under the cap is returned
+         * unchanged.
+         */
+        internal fun splitChunksAtMost(samples: ShortArray, maxSamples: Int): List<ShortArray> {
+            if (samples.size <= maxSamples) return listOf(samples)
+            val rms = windowedRms(samples)
+            val out = ArrayList<ShortArray>()
+            var start = 0
+            while (samples.size - start > maxSamples) {
+                val hi = start + maxSamples
+                val lo = start + maxSamples * 3 / 4
+                val split = quietSplit(rms, lo.coerceAtMost(samples.size), hi.coerceAtMost(samples.size))
+                    ?: hi.coerceAtMost(samples.size)
+                out.add(samples.copyOfRange(start, split))
+                start = split
+            }
+            out.add(samples.copyOfRange(start, samples.size))
+            return out
+        }
+
+        /** RMS of every [RMS_WINDOW_SAMPLES]-sample window, for finding quiet split points. */
+        private fun windowedRms(samples: ShortArray): FloatArray {
+            val n = samples.size
+            val count = (n + RMS_WINDOW_SAMPLES - 1) / RMS_WINDOW_SAMPLES
+            val rms = FloatArray(count)
+            for (i in 0 until count) {
+                val from = i * RMS_WINDOW_SAMPLES
+                val to = min(from + RMS_WINDOW_SAMPLES, n)
+                var sum = 0L
+                for (j in from until to) {
+                    val v = samples[j].toInt()
+                    sum += v * v
+                }
+                rms[i] = sqrt(sum.toDouble() / (to - from)).toFloat()
+            }
+            return rms
+        }
+
+        /**
+         * Sample offset of the quietest qualifying [RMS_WINDOW_SAMPLES]-sample window whose
+         * end lands in `loIncl..hiIncl`, or null when every candidate window is louder than
+         * [QUIET_RMS] (no real pause to rest the boundary on).
+         */
+        private fun quietSplit(rms: FloatArray, loIncl: Int, hiIncl: Int): Int? {
+            var best = Int.MAX_VALUE
+            var bestRms = QUIET_RMS
+            val firstWin = loIncl / RMS_WINDOW_SAMPLES
+            val lastWin = hiIncl / RMS_WINDOW_SAMPLES
+            for (i in firstWin..lastWin) {
+                val r = rms[i]
+                if (r < bestRms) {
+                    bestRms = r
+                    best = ((i + 1) * RMS_WINDOW_SAMPLES).coerceIn(loIncl, hiIncl)
+                }
+            }
+            return if (best == Int.MAX_VALUE) null else best
+        }
 
         /** SentencePiece metasymbol for a leading space (U+2581). */
         const val META = "\u2581"
