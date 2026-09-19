@@ -116,32 +116,23 @@ fun LanguageOnboardingScreen(
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
             shape = RoundedCornerShape(12.dp),
         ) {
-            Column(
+            Row(
                 modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-Text(
-                    text = "Private & local 🔒",
-                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                Icon(
+                    imageVector = Icons.Filled.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier.size(20.dp),
                 )
-                }
-Text(
-    text = "Your voice never leaves this device. Download the model once, then dictate offline anywhere.",
-    style = MaterialTheme.typography.bodyMedium,
-    color = MaterialTheme.colorScheme.onPrimaryContainer,
-    lineHeight = 20.sp,
-)
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = "Private & local — your voice never leaves this device. Download the model once, then dictate offline anywhere.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    lineHeight = 20.sp,
+                )
             }
         }
 
