@@ -721,7 +721,7 @@ open class DolphinAttnEngine(
         private const val DOLPHIN_MAX_MS = 14_000
 
         /** The Dolphin chunk cap in samples at 16 kHz: 14 s × 16 kHz = 224,000. */
-        private const val DOLPHIN_MAX_SAMPLES = DOLPHIN_MAX_MS * SAMPLE_RATE / 1000
+        internal const val DOLPHIN_MAX_SAMPLES = DOLPHIN_MAX_MS * SAMPLE_RATE / 1000
 
         /** Near-silence scan window for split points: 300 ms at 16 kHz. */
         private const val RMS_WINDOW_SAMPLES = 4_800

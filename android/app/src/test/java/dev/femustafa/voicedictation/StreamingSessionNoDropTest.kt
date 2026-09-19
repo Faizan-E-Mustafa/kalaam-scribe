@@ -182,6 +182,89 @@ class StreamingSessionNoDropTest {
         assertEquals("tail must appear in the final transcript", early.size + tail.size, full.split(" ").size)
     }
 
+    /** A [DolphinRecognizerLike] that records every audio sizes handed to beamSearch. */
+    private class RecordingDolphinDecoder : DolphinRecognizerLike {
+        val beamedSizes = mutableListOf<Int>()
+
+        override fun beamSearch(
+            ref: DolphinAttnEngine.DolphinAttnModelRef,
+            audio: ShortArray,
+        ): IntArray {
+            beamedSizes += audio.size
+            return intArrayOf(audio.size)
+        }
+
+        override fun decodeTokens(
+            ref: DolphinAttnEngine.DolphinAttnModelRef,
+            tokens: IntArray,
+        ): String = tokens.filter { it != 0 && it != 39999 && it != 40000 && it != 324 }
+            .joinToString(",")
+    }
+
+    /**
+     * A live VAD utterance may exceed the decoder's 66-token kernel ceiling (the VAD's
+     * max-speech bound is 30 s; ~120 tokens at the measured 4.1 tok/s). The streaming
+     * session must split such a segment into <=14 s pieces and decode each, so the
+     * utterance's tail is never truncated mid-word.
+     */
+    @Test
+    fun dolphinStreamingSplitsAnOverCapSegmentSoItsTailIsNotTruncated() = runBlocking {
+        // 300,000 samples is over the 224,000-sample (14 s) cap. A constant signal means
+        // no quiet pause, so the splitter falls back to the hard cap: 224,000 + 76,000.
+        val segment = SpeechSegment(start = 0, samples = FloatArray(300_000) { 1f })
+        val vad = FakeVad(segmentPlan = mapOf(0 to listOf(segment)))
+        val decoder = RecordingDolphinDecoder()
+        val session = DolphinAttnSession(
+            recognizerLike = decoder,
+            modelRef = FakeModelRef(),
+            waveWriter = InMemoryWaveWriter(16000),
+            vadLike = vad,
+        )
+
+        val got = CopyOnWriteArrayList<String>()
+        val collector = launch(Dispatchers.Default) { session.partials.collect { got += it } }
+
+        awaitCollectorSubscribed()
+        session.accept(tones(512))
+        yield()
+        val full = session.flush("")
+
+        awaitPartialCount(got, 1)
+        collector.cancel()
+        assertEquals("over-cap segment split into two pieces", listOf(224_000, 76_000), decoder.beamedSizes)
+        assertEquals("both pieces decoded and joined, tail preserved", "224000 76000", full)
+    }
+
+    /** A short live utterance is still one decode (the highest-quality path). */
+    @Test
+    fun dolphinStreamingKeepsAShortSegmentAsOneDecode() = runBlocking {
+        // 30,000 samples must NOT collide with a special token id (EOS=40000), which the
+        // fake's decodeTokens filters out (that would blank the text and trigger the
+        // whole-clip fallback).
+        val segment = SpeechSegment(start = 0, samples = FloatArray(30_000) { 1f })
+        val vad = FakeVad(segmentPlan = mapOf(0 to listOf(segment)))
+        val decoder = RecordingDolphinDecoder()
+        val session = DolphinAttnSession(
+            recognizerLike = decoder,
+            modelRef = FakeModelRef(),
+            waveWriter = InMemoryWaveWriter(16000),
+            vadLike = vad,
+        )
+
+        val got = CopyOnWriteArrayList<String>()
+        val collector = launch(Dispatchers.Default) { session.partials.collect { got += it } }
+
+        awaitCollectorSubscribed()
+        session.accept(tones(512))
+        yield()
+        val full = session.flush("")
+
+        awaitPartialCount(got, 1)
+        collector.cancel()
+        assertEquals(listOf(30_000), decoder.beamedSizes)
+        assertEquals("30000", full)
+    }
+
     // -------------------------------------------------------------------------
     // SherpaOfflineSession tests
     // -------------------------------------------------------------------------

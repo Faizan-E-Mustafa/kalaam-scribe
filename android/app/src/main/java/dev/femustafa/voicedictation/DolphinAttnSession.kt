@@ -178,7 +178,30 @@ internal open class DolphinAttnSession(
         val shortArray = ShortArray(segment.samples.size) {
             (segment.samples[it] * 32767f).toInt().toShort()
         }
-        val tokens = decodeHook.beamSearch(modelRef!!, shortArray)
+        // A live VAD utterance can outrun the decoder's 66-content-token kernel ceiling
+        // (SkipLayerNorm_0 fails at a 72-token KV history): the VAD's max-speech bound is
+        // 30 s — 5-7x the tokens a <=14 s chunk needs. Split such a segment into <=14 s
+        // pieces (preferring quiet pauses, so boundaries don't land mid-word) and decode
+        // each independently, then join. Same guard the batch path applies, so a long
+        // streaming utterance's tail is never truncated mid-word.
+        if (shortArray.size <= DolphinAttnEngine.DOLPHIN_MAX_SAMPLES) {
+            return decodeSegmentOnce(shortArray)
+        }
+        val max = DolphinAttnEngine.DOLPHIN_MAX_SAMPLES
+        Log.i(
+            TAG,
+            "streaming segment ${"%.1f".format(shortArray.size / DolphinAttnEngine.SAMPLE_RATE.toDouble())}s" +
+                " -> ${(shortArray.size + max - 1) / max} chunks"
+        )
+        return DolphinAttnEngine.splitChunksAtMost(shortArray, max)
+            .asSequence()
+            .map { decodeSegmentOnce(it).trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+    }
+
+    private fun decodeSegmentOnce(samples: ShortArray): String {
+        val tokens = decodeHook.beamSearch(modelRef!!, samples)
         return decodeHook.decodeTokens(modelRef!!, tokens).trim()
     }
 
