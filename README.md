@@ -21,6 +21,7 @@ The app is driven by ONNX ASR engines: **sherpa-onnx Whisper** for English / mul
 - ✅ **Language-aware model picker** — English, Roman-Urdu, Urdu, and auto-detect
 - ✅ **Silero VAD segmentation** — live speech split into utterances for streaming dictation
 - ✅ **Two transcription modes** — Batch and simulated streaming
+- ✅ **Long-audio chunking** — clips >14 s split by VAD into ≤14 s chunks (66-token decoder kernel ceiling), with word-seam merge to remove boundary duplication
 - ✅ **Resident model** — loaded once, reused across dictations (no reload per clip)
 - ✅ **In-app model download** — models fetched from HuggingFace with progress
 - ✅ **File transcription** — transcribe a WAV/MP3 from your picker
@@ -59,6 +60,28 @@ The APK lands at `app/build/outputs/apk/debug/app-debug.apk`. For the full toolc
 2. Download the recommended model (or any model from the picker).
 3. Tap the mic, speak, tap stop — the transcript is copied to the clipboard and a notification shows your dictation history.
 
+## Long-Audio Handling
+
+Dolphin attention ASR has a hard decoder kernel wall: the fused `SkipLayerNormalization`
+kernel rejects a decoder KV history beyond 72 tokens (66 content tokens after the 5-token
+`ur/PK` prefix). To stay under this wall, clips over 14 seconds are split into ≤14 s chunks
+by the resident Silero VAD, each decoded independently, and the results merged.
+
+**Seam word-merge (ticket 33):** each chunk ends cold at a mid-sentence boundary, so the
+next chunk's first words can re-decode as a repeat of the prior chunk's tail, duplicating
+words across every seam. A pure text post-processing step removes this artifact — a
+word-level longest-common-substring comparison between the tail of one chunk and the head
+of the next (last 12 vs. first 12 words, collapse when ≥4 words match; left wins).
+No model/KV changes are involved; it is applied at every join (batch, streaming flush,
+and within over-cap segment splits).
+
+**Decoder continuation (ticket 32) — won'tfix:** encoder-first / KV-windowed continuation
+was investigated and proven infeasible on Dolphin — every decomposition collapses into a
+single repeating token (`ٹ`, `ائم`, `اس`) or refuses new audio (EOS on token 1). The
+vocabulary has no timestamp/`<prev>` tokens, so whisper.cpp-style continuation cannot work.
+The audio-side 14 s chunk splitter is the only long-audio mechanism available; seam-merge
+is the post-processing that makes its residual artifact acceptable.
+
 ## Architecture
 
 ```
@@ -89,7 +112,7 @@ The APK lands at `app/build/outputs/apk/debug/app-debug.apk`. For the full toolc
 | Mode | Behaviour |
 |------|-----------|
 | **Batch** | One decode of the whole clip after Stop — simplest, works on every backend |
-| **Simulated streaming** | Live VAD decodes each utterance as you speak, growing the transcript in real time |
+| **Simulated streaming** | Live VAD decodes each utterance as you speak, growing the transcript in real time; utterances over ~14 s are split into ≤14 s pieces and joined with seam word-merge |
 
 The default is **Roman-Urdu · int8** (`roman-urdu-int8`), and the picker recommends Whisper · Balanced for English, Roman-Urdu for the Roman-Urdu language, and Dolphin · Balanced for Urdu.
 
@@ -145,7 +168,7 @@ Sources:
 | [`android/SETUP.md`](android/SETUP.md) | Android build and on-device runbook |
 | [`CONTEXT.md`](CONTEXT.md) | Domain glossary (terms to use and avoid) |
 | [`AGENTS.md`](AGENTS.md) | Agent workflow and repository conventions |
-| [`.scratch/`](.scratch) | Feature specs and implementation tickets |
+| [`.scratch/`](.scratch) | Feature specs and implementation tickets (Dolphin long-audio tickets 32/33) |
 
 ## License
 
