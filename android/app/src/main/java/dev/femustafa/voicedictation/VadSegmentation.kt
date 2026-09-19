@@ -58,11 +58,21 @@ internal class SherpaVad(private val vad: Vad) : VadLike {
  * Faithful port of the canonical sherpa-onnx java VAD loop
  * (`VadNonStreamingDolphinCtc.java`): push 512-sample windows, drain any queued
  * utterances, then flush once at the end and drain again.
+ *
+ * When [padding] > 0, each drained segment is expanded by [padding] samples on
+ * both sides (clamped to the clip) so words at the VAD's exact silence-boundary
+ * cuts are not clipped by the decoder (ADR 0006 deems this a future optimization;
+ * see the vad-accuracy spec). When [maxChunkSamples] > 0, consecutive segments are
+ * first merged into chunks under that many samples (WhisperX cut-and-merge), then
+ * padded once at each merged chunk's outer edges. Defaults keep the historical
+ * behavior.
  */
 internal fun segmentAudioWithVad(
     samples: FloatArray,
     vad: VadLike,
     window: Int = VAD_WINDOW,
+    padding: Int = 0,
+    maxChunkSamples: Int = 0,
 ): List<SpeechSegment> {
     val out = mutableListOf<SpeechSegment>()
     var i = 0
@@ -81,6 +91,63 @@ internal fun segmentAudioWithVad(
     while (!vad.isEmpty()) {
         vad.front()?.let { out += it }
         vad.pop()
+    }
+    // Pipeline: drain raw -> merge into <= maxChunkSamples chunks -> pad each chunk.
+    val merged = if (maxChunkSamples > 0) mergeSegments(out, samples, maxChunkSamples) else out
+    return if (padding > 0) padSegments(merged, samples, padding) else merged
+}
+
+/**
+ * Expand each [SpeechSegment] in [segments] by [padding] samples of surrounding
+ * source audio on both sides, clamped to [source]'s bounds. The resulting segment
+ * starts at the padded slice's first sample and its samples come from [source]
+ * (so post-padding holds the real trailing audio, not just the VAD's buffer).
+ */
+internal fun padSegments(
+    segments: List<SpeechSegment>,
+    source: FloatArray,
+    padding: Int,
+): List<SpeechSegment> =
+    segments.map { seg ->
+        val from = maxOf(0, seg.start - padding)
+        val to = minOf(source.size, seg.start + seg.samples.size + padding)
+        SpeechSegment(from, source.copyOfRange(from, to), seg.sampleRate)
+    }
+
+/**
+ * Merge consecutive VAD [segments] into one continuous, source-backed chunk while
+ * the chunk's total span stays under [maxSamples]. Chunk boundaries therefore fall
+ * at real silence gaps (the gap between two merged segments is included in the
+ * chunk's audio). A single segment that already exceeds [maxSamples] passes through
+ * whole — merging never splits.
+ *
+ * The returned chunk is `SpeechSegment(first.start, source[start until lastEnd])`,
+ * i.e. the full span from the first segment's start to the last segment's end,
+ * clamped to [source]. Ordered; never splits or reorders. Greedy forward: an
+ * oversized neighbor closes the current chunk rather than being absorbed.
+ */
+internal fun mergeSegments(
+    segments: List<SpeechSegment>,
+    source: FloatArray,
+    maxSamples: Int,
+): List<SpeechSegment> {
+    if (maxSamples <= 0 || segments.size < 2) return segments
+    val out = ArrayList<SpeechSegment>(segments.size)
+    var i = 0
+    while (i < segments.size) {
+        val first = segments[i]
+        var j = i + 1
+        var last = first
+        while (j < segments.size) {
+            val next = segments[j]
+            val spanEnd = next.start + next.samples.size
+            if (spanEnd - first.start > maxSamples) break
+            last = next
+            j++
+        }
+        val to = minOf(source.size, last.start + last.samples.size)
+        out += SpeechSegment(first.start, source.copyOfRange(first.start, to), first.sampleRate)
+        i = j
     }
     return out
 }
@@ -142,6 +209,20 @@ internal const val VAD_WINDOW = 512
 
 /** The sample rate used by the VAD and the app's mic capture. */
 internal const val SAMPLE_RATE = 16000
+
+/** Pre/post padding (ms) added around a VAD segment before decode, so words at the
+ *  detected speech boundary are not clipped. See the vad-accuracy spec (ADR 0006 note). */
+internal const val PAD_MS = 200
+
+/** Pre/post padding in samples at 16 kHz: 200 ms × 16 kHz. */
+internal const val PAD_SAMPLES = PAD_MS * SAMPLE_RATE / 1000
+
+/** A merged segment chunk may span at most this many ms: Whisper/Dolphin's ~30 s
+ *  design limit minus headroom (vad-accuracy spec, Decision 2). */
+internal const val MERGE_MAX_MS = 28_000
+
+/** The merge cap in samples at 16 kHz: 28 s × 16 kHz = 448,000. */
+internal const val MERGE_MAX_SAMPLES = MERGE_MAX_MS * SAMPLE_RATE / 1000
 
 // Extension function to convert ShortArray to FloatArray
 internal fun ShortArray.toFloatArray(sampleRate: Int): FloatArray {

@@ -132,28 +132,57 @@ class SherpaWhisperEngine(
         // language is selected we pass "" so Whisper auto-detects.
         applyLanguage(real, resolveLanguage(languageMode, language))
 
+        // Clips at or under the ~28 s chunk cap decode in a single pass.
+        if (wave.samples.size <= MERGE_MAX_SAMPLES) return decodeWhole(real, wave)
+
+        // sherpa-onnx caps a single whisper decode at ~3000 mel frames (~29.5 s)
+        // and silently discards the rest of the audio
+        // (offline-recognizer-whisper-impl.h:DecodeStream). For longer clips,
+        // segment by VAD and merge consecutive utterances into <= 28 s chunks
+        // (WhisperX cut-and-merge), decoding each chunk independently so the tail
+        // is never dropped. Falls back to a single whole-clip decode when the
+        // Silero VAD model isn't installed.
+        val vadConfig = vadConfig() ?: return decodeWhole(real, wave)
+        val chunks = segmentAudioWithVad(
+            samples = wave.samples,
+            vad = SherpaVad(com.k2fsa.sherpa.onnx.Vad(null, vadConfig)),
+            padding = PAD_SAMPLES,
+            maxChunkSamples = MERGE_MAX_SAMPLES,
+        )
+        if (chunks.isEmpty()) return decodeWhole(real, wave)
+
+        Log.i(TAG, "long clip ${"%.1f".format(wave.samples.size.toDouble() / wave.sampleRate)}s -> ${chunks.size} chunks")
+        return chunks.asSequence()
+            .map { decodeSamples(real, it.samples, it.sampleRate).trim() }
+            .filter { it.isNotEmpty() }
+            .joinToString(" ")
+    }
+
+    /** Single whole-clip decode of [wave]. */
+    private fun decodeWhole(real: SherpaModelRef, wave: Wave): String =
+        decodeSamples(real, wave.samples, wave.sampleRate)
+
+    /** One createStream/acceptWaveform/decode pass over [samples]. */
+    private fun decodeSamples(real: SherpaModelRef, samples: FloatArray, sampleRate: Int): String {
         val stream = real.recognizer.createStream()
-        try {
-            stream.acceptWaveform(wave.samples, wave.sampleRate)
+        return try {
+            stream.acceptWaveform(samples, sampleRate)
             real.recognizer.decode(stream)
-            return real.recognizer.getResult(stream).text.trim()
+            real.recognizer.getResult(stream).text.trim()
         } finally {
             stream.release()
         }
     }
 
-    override suspend fun createSession(
-        model: WhisperModelRef,
-        languageMode: LanguageMode,
-        language: String?,
-    ): TranscriptionSession? {
-        val real = model as? SherpaModelRef ?: return null
-        val resolvedLanguage = resolveLanguage(languageMode, language)
-        val waveWriter = InMemoryWaveWriter(16000)
-        // Create a SherpaVad instance for this session
+    /**
+     * Build the sherpa VAD config from the app's VAD settings, or null when the
+     * Silero model is missing from filesDir. Used by both the streaming session
+     * and long-clip chunking in [transcribe].
+     */
+    private fun vadConfig(): com.k2fsa.sherpa.onnx.VadModelConfig? {
         val sileroPath = java.io.File(context.filesDir, "silero_vad.onnx").absolutePath
         if (!java.io.File(sileroPath).exists()) {
-            Log.w(TAG, "Silero VAD model not found at $sileroPath, cannot create streaming session")
+            Log.w(TAG, "Silero VAD model not found at $sileroPath, cannot segment")
             return null
         }
         val silero = com.k2fsa.sherpa.onnx.SileroVadModelConfig()
@@ -169,6 +198,19 @@ class SherpaWhisperEngine(
         vadConfig.sampleRate = 16000
         vadConfig.numThreads = VoiceDictationApp.from(context).whisperThreads()
         vadConfig.provider = "cpu"
+        return vadConfig
+    }
+
+    override suspend fun createSession(
+        model: WhisperModelRef,
+        languageMode: LanguageMode,
+        language: String?,
+    ): TranscriptionSession? {
+        val real = model as? SherpaModelRef ?: return null
+        val resolvedLanguage = resolveLanguage(languageMode, language)
+        val waveWriter = InMemoryWaveWriter(16000)
+        // Create a SherpaVad instance for this session
+        val vadConfig = vadConfig() ?: return null
         val vad = com.k2fsa.sherpa.onnx.Vad(null, vadConfig)
         val vadLike = SherpaVad(vad)
         return SherpaOfflineSession(real.recognizer, waveWriter, resolvedLanguage, real, context, vadLike)
