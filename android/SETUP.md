@@ -126,6 +126,105 @@ required. First build downloads dependencies (a few minutes).
 
 ---
 
+## 4.5 Releasing a signed APK to GitHub
+
+Users sideload the app from a GitHub Release (not the Play Store), so the APK is
+signed with a **stable self-signed key** — enough for Android to install it, with
+no Google account or paid certificate. The signature must stay **the same key
+across releases**, otherwise Android rejects an update over an existing install
+("integrity check failed") and users must uninstall/reinstall.
+
+### One-time setup: generate the signing key
+
+```bash
+cd android
+keytool -genkeypair -v -keystore app-signing.p12 -alias kalaam-scribe \
+  -keyalg RSA -keysize 2048 -validity 10000 -storetype pkcs12 \
+  -dname "CN=Kalaam Scribe, O=Kalaam Scribe, C=US"
+```
+
+- Set a password (min 6 chars) and **store it in a password manager** — it is the
+  only credential guarding the release. Anyone with the password + `.p12` can sign
+  releases.
+- `app-signing.p12` is gitignored — never commit it. It does **not** need to be
+  in the repo; it lives on your machine only.
+- For convenience, save the password in a gitignored `android/.env` as
+  `APK_SIGNING_PASSWORD=...` so you don't retype it.
+
+### Signing config
+
+`android/app/build.gradle.kts` already wires the `release` build type to this
+keystore (reads the password from the `APK_SIGNING_PASSWORD` env var). The
+`debug` build stays unsigned. No changes needed here unless the key is
+regenerated.
+
+### Build the signed release APK
+
+```bash
+cd android
+# pick up the password from .env (or export APK_SIGNING_PASSWORD=... manually)
+export APK_SIGNING_PASSWORD="$(cut -d= -f2- .env)"
+./gradlew :app:assembleRelease
+```
+
+Output APK:
+
+```
+android/app/build/outputs/apk/release/app-release.apk   (~123 MB)
+```
+
+> Note: a `.env` password containing shell-special characters (e.g. `(`) breaks
+> `source .env`; the `$(cut -d= -f2- .env)` form above reads it verbatim and avoids
+> that.
+
+### Verify the signature is embedded
+
+This AGP version embeds the signature in the binary `AndroidManifest.xml` rather
+than as separate `META-INF/*.rsa` files, so checking the zip for signature files
+returns nothing. Instead confirm your certificate bytes are inside the APK:
+
+```bash
+cd android
+export APK_SIGNING_PASSWORD="$(cut -d= -f2- .env)"
+keytool -exportcert -keystore app-signing.p12 -alias kalaam-scribe \
+  -storepass "$APK_SIGNING_PASSWORD" -rfc -file /tmp/kalaam.pem
+python3 - <<'EOF'
+import glob, base64
+pem = open('/tmp/kalaam.pem').read()
+b64 = ''.join(l for l in pem.splitlines() if l and not l.startswith('-----'))
+der = base64.b64decode(b64)
+apk = glob.glob('app/build/outputs/apk/release/*.apk')[0]
+print('cert found in release APK:', der in open(apk, 'rb').read())
+EOF
+```
+
+Expect `cert found in release APK: True`.
+
+### Bump the version (each release)
+
+In `android/app/build.gradle.kts`, bump `defaultConfig.versionName` (e.g. `1.0.0`
+→ `1.1.0`), then rebuild. Keep the same keystore so updates install in place.
+
+### Commit, tag, and publish
+
+```bash
+cd android/..   # repo root
+git add android/app/build.gradle.kts android/.gitignore
+git commit -m "Sign release APK with stable self-signed key"
+git tag v1.1.0 && git push origin development --tags
+```
+
+Then upload the APK to the Release (web UI):
+1. Go to `https://github.com/<you>/kalaam-scribe/releases/new`.
+2. Choose the tag (`v1.1.0`).
+3. Drag in `android/app/build/outputs/apk/release/app-release.apk`.
+4. Publish.
+
+> Keep `versionCode` monotonic across releases too (Android uses it for upgrade
+> ordering); only `versionName` is user-visible.
+
+---
+
 ## 5. Connect an Android device
 
 Two options. `adb` runs **inside WSL2**.
@@ -253,6 +352,8 @@ adb shell rm -f /data/local/tmp/ggml-base-q8_0.bin /data/local/tmp/jfk.wav
 | `SpikeRunner: spike complete` with no `transcription:` | The early-return "MISSING model/audio" path ran; verify the files are in the dir the code reads and that the rebuilt APK is installed. |
 | Wrong package for whisper API | It is `dev.ffmpegkit.whisper`, not `com.whispercpp.whisper`. |
 | `usbipd: Access denied` | Run `usbipd bind`/`attach` from an **admin** PowerShell. |
+| `SigningConfig "release" is missing required property "keyPassword"` | Add `keyPassword = System.getenv("APK_SIGNING_PASSWORD")` to the signing config (same value as `storePassword`). |
+| `source .env` fails with `syntax error` | The password has shell-special chars (e.g. `(`). Read it with `export APK_SIGNING_PASSWORD="$(cut -d= -f2- .env)"` instead of `source`. |
 
 ---
 
