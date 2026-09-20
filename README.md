@@ -14,6 +14,12 @@ A native **Android app** (Kotlin + Jetpack Compose) that turns spoken messages i
 
 The app is driven by ONNX ASR engines: **sherpa-onnx Whisper** for English / multilingual / Roman-Urdu transcription, and **Dolphin attention ASR** (onnxruntime) for Urdu-script dictation.
 
+## Demo
+<div align="center">
+  <video src="https://github.com/user-attachments/assets/076d2ffd-8cc1-4c58-b366-7154bc6482da" controls width="30%"></video>
+</div>
+
+
 ## Features
 
 - ✅ **100% on-device** — transcription runs locally, no audio ever leaves the phone
