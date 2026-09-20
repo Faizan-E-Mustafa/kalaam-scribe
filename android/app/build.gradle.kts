@@ -8,12 +8,21 @@ android {
     namespace = "dev.femustafa.kalaamscribe"
     compileSdk = 35
 
+    signingConfigs {
+        create("release") {
+            storeFile = file("../app-signing.p12")
+            storePassword = System.getenv("APK_SIGNING_PASSWORD")
+            keyPassword = System.getenv("APK_SIGNING_PASSWORD")
+            keyAlias = "kalaam-scribe"
+        }
+    }
+
     defaultConfig {
         applicationId = "dev.femustafa.kalaamscribe"
         minSdk = 26
         targetSdk = 35
         versionCode = 1
-        versionName = "1"
+        versionName = "1.0.0"
 
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
@@ -23,6 +32,7 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",

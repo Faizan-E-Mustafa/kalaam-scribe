@@ -11,4 +11,4 @@
 .kotlin/
 local.properties
 /spike
-
+app-signing.p12
