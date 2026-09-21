@@ -76,6 +76,10 @@ android {
         // JVM rather than throwing. Lets unit tests exercise code paths that log without
         // requiring a Robolectric or androidTest harness.
         unitTests.isReturnDefaultValues = true
+        // Robolectric compose UI tests need the merged manifest + resources (the
+        // same surface used for the device build), so layout bugs on small phones
+        // are caught on the JVM.
+        unitTests.isIncludeAndroidResources = true
     }
 }
 
@@ -110,7 +114,14 @@ dependencies {
     implementation(libs.jlayer)
 
     debugImplementation(libs.androidx.ui.tooling)
+    debugImplementation(platform(libs.androidx.compose.bom))
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    // JVM UI tests: Robolectric renders Compose at configurable phone sizes.
+    testImplementation(platform(libs.androidx.compose.bom))
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.robolectric)
 }

@@ -9,6 +9,8 @@ whisper = "1.0.0"
 sherpaOnnx = "1.13.4"
 onnxruntime = "1.27.0"
 jlayer = "1.0.1"
+robolectric = "4.14.1"
+androidxTestCore = "1.6.1"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -27,6 +29,10 @@ whisper-android = { group = "dev.ffmpegkit-maintained", name = "whisper-android"
 onnxruntime-android = { group = "com.microsoft.onnxruntime", name = "onnxruntime-android", version.ref = "onnxruntime" }
 # Pure-Java MP3 decoder (LGPL) used by AudioDecoder to transcribe .mp3 uploads.
 jlayer = { group = "javazoom", name = "jlayer", version.ref = "jlayer" }
+# JVM UI tests: Robolectric renders Compose so phone-size layout bugs are caught
+# without a device (see WelcomeScreenContinueVisibleTest / DictationScreenLayoutTest).
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidxTestCore" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
