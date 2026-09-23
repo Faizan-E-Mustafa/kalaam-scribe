@@ -1,9 +1,15 @@
 package dev.femustafa.kalaamscribe
 
 import android.app.Application
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import org.junit.Rule
 import org.junit.Test
@@ -38,6 +44,59 @@ abstract class DictationScreenLayoutBase {
         }
 
         composeRule.onNodeWithText("Copy").assertIsDisplayed()
+    }
+
+    @Test
+    fun fullTextShowsBeginningOfALongTranscript() {
+        val app: Application = ApplicationProvider.getApplicationContext()
+        val kalaam = KalaamApp.from(app)
+        // ~2,400 chars: the card auto-scrolls to the end, so only the Full text dialog
+        // can prove the beginning survived.
+        kalaam.setTranscript("word ".repeat(400).trim())
+        kalaam.setLastTranscriptionMs(1200L)
+
+        val vm = DictationViewModel(app)
+        composeRule.setContent {
+            DictationScreen(viewModel = vm, onOpenSettings = {})
+        }
+
+        composeRule.onNodeWithText("Full text").performClick()
+        composeRule.onNodeWithText("Transcript (1999 chars)").assertIsDisplayed()
+        // The dialog starts scrolled at the top, so the first words are in view.
+        composeRule.onNodeWithTag("fullTranscriptText")
+            .assert(hasText("word word word word word word word word", substring = true))
+    }
+
+    @Test
+    fun scrollbarShownWhenTranscriptIsLong() {
+        val app: Application = ApplicationProvider.getApplicationContext()
+        val kalaam = KalaamApp.from(app)
+        kalaam.setTranscript("word ".repeat(400).trim())
+        kalaam.setLastTranscriptionMs(1200L)
+
+        val vm = DictationViewModel(app)
+        composeRule.setContent {
+            DictationScreen(viewModel = vm, onOpenSettings = {})
+        }
+
+        // Long text overflows the capped card, so the visible scrollbar must be there —
+        // it is the explicit "the text is long" affordance for the user.
+        composeRule.onAllNodesWithTag("transcriptScrollbar").assertCountEquals(1)
+    }
+
+    @Test
+    fun scrollbarHiddenWhenTranscriptIsShort() {
+        val app: Application = ApplicationProvider.getApplicationContext()
+        val kalaam = KalaamApp.from(app)
+        kalaam.setTranscript("just a short transcript")
+        kalaam.setLastTranscriptionMs(1200L)
+
+        val vm = DictationViewModel(app)
+        composeRule.setContent {
+            DictationScreen(viewModel = vm, onOpenSettings = {})
+        }
+
+        composeRule.onAllNodesWithTag("transcriptScrollbar").assertCountEquals(0)
     }
 }
 

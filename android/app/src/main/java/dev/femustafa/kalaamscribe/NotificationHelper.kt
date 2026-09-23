@@ -17,6 +17,7 @@ object NotificationHelper {
     const val CHANNEL_ID = "dictation"
     private const val NOTIF_RECORDING = 1
     private const val NOTIF_COPIED = 2
+    private const val TAIL_CHARS = 140
 
     /** Idempotent: creates the channel once on API 26+. */
     fun ensureChannel(context: Context) {
@@ -30,14 +31,21 @@ object NotificationHelper {
     }
 
     fun showCopied(context: Context, transcript: String) {
-        post(context, NOTIF_COPIED, "Copied", transcript)
+        // The collapsed notification shows only ~2 lines of contentText, so putting the
+        // TAIL there proves the dictation ended with real words (the head is visible on
+        // the screen anyway). The expanded BigTextStyle still carries the full text.
+        val tail = if (transcript.length <= TAIL_CHARS) transcript else {
+            val cut = transcript.lastIndexOf(' ', transcript.length - TAIL_CHARS)
+            "…" + transcript.substring(if (cut > 0) cut + 1 else transcript.length - TAIL_CHARS)
+        }
+        post(context, NOTIF_COPIED, "Copied (${transcript.length} chars)", tail, transcript)
     }
 
     fun cancelRecording(context: Context) {
         NotificationManagerCompat.from(context).cancel(NOTIF_RECORDING)
     }
 
-    private fun post(context: Context, id: Int, title: String, text: String) {
+    private fun post(context: Context, id: Int, title: String, text: String, bigText: String) {
         if (Build.VERSION.SDK_INT >= 33 &&
             context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
             android.content.pm.PackageManager.PERMISSION_GRANTED
@@ -48,7 +56,7 @@ object NotificationHelper {
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setContentTitle(title)
             .setContentText(text)
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setStyle(NotificationCompat.BigTextStyle().bigText(bigText))
             .setOnlyAlertOnce(true)
             .build()
         NotificationManagerCompat.from(context).notify(id, notification)
