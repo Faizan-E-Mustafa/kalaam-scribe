@@ -47,16 +47,29 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 
 /**
@@ -79,6 +92,21 @@ fun DictationScreen(
     val history by viewModel.history.collectAsState()
 
     val context = LocalContext.current
+
+    // The card is a fixed-height, auto-scrolled window (tail visible = nothing dropped).
+    // When it hides the start of a long dictation, the "Full text" dialog shows it all.
+    var showFullTranscript by remember { mutableStateOf(false) }
+
+    // Hoisted so we can auto-scroll to the newest content: for long transcripts the
+    // fixed-height card only shows a window, and without following the tail the user
+    // can't tell whether the dictation ended or the last words were dropped.
+    val transcriptScroll = rememberScrollState()
+
+    LaunchedEffect(transcript) {
+        if (!transcript.isNullOrEmpty()) {
+            transcriptScroll.animateScrollTo(transcriptScroll.maxValue)
+        }
+    }
 
     val micLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -199,33 +227,57 @@ fun DictationScreen(
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Text(
-                    text = when {
-                        // While transcribing we keep showing the live transcript (if any)
-                        // so the partials don't suddenly disappear when the user taps Stop.
-                        transcribing -> transcript ?: "Running on-device…"
-                        recording -> transcript ?: "Speak now — tap Stop when done (works in background)"
-                        transcript != null -> transcript!!
-                        error != null -> error!!
-                        else -> "No dictation yet — tap Record"
-                    },
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                // Bounded scroll window: a visible scrollbar appears exactly when the
+                // transcript overflows the card, so long results are unmistakably long.
+                // Auto-scrolled to the end on update, so the thumb sitting at the bottom
+                // also shows the tail landed (nothing was dropped).
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .heightIn(max = 160.dp)
-                        .verticalScroll(rememberScrollState()),
-                )
+                        .visibleScrollbar(
+                            transcriptScroll,
+                            trackColor = MaterialTheme.colorScheme.outlineVariant,
+                            thumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        .then(
+                            if (transcriptScroll.maxValue > 0) {
+                                Modifier.testTag("transcriptScrollbar")
+                            } else {
+                                Modifier
+                            },
+                        ),
+                ) {
+                    Text(
+                        text = when {
+                            // While transcribing we keep showing the live transcript (if any)
+                            // so the partials don't suddenly disappear when the user taps Stop.
+                            transcribing -> transcript ?: "Running on-device…"
+                            recording -> transcript ?: "Speak now — tap Stop when done (works in background)"
+                            transcript != null -> transcript!!
+                            error != null -> error!!
+                            else -> "No dictation yet — tap Record"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = if (error != null) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 160.dp)
+                            .verticalScroll(transcriptScroll),
+                    )
+                }
                 if (transcript != null && !recording && !transcribing) {
                     val lastMs = lastTranscriptionMs
                     if (lastMs != null) {
                         Text(
-                            text = "Transcribed in ${"%.1f".format(lastMs / 1000.0)} s",
+                            text = "Transcribed in ${"%.1f".format(lastMs / 1000.0)} s · ${transcript!!.length} chars",
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
-                    FilledTonalButton(onClick = { copy(transcript!!) }) { Text("Copy") }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = { copy(transcript!!) }, modifier = Modifier.weight(1f)) { Text("Copy") }
+                        FilledTonalButton(onClick = { showFullTranscript = true }, modifier = Modifier.weight(1f)) { Text("Full text") }
+                    }
                 }
                 if (error != null && transcript == null && !recording && !transcribing) {
                     Text(
@@ -274,6 +326,57 @@ fun DictationScreen(
             )
         }
     }
+
+    if (showFullTranscript) {
+        val t = transcript
+        if (t != null) {
+            FullTranscriptDialog(
+                text = t,
+                onDismiss = { showFullTranscript = false },
+                onCopy = { copy(t) },
+            )
+        }
+    }
+}
+
+/** Full-screen view of the whole transcript, readable from the top. */
+@Composable
+private fun FullTranscriptDialog(text: String, onDismiss: () -> Unit, onCopy: () -> Unit) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(Modifier.fillMaxSize()) {
+            Column(
+                Modifier.fillMaxSize().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        "Transcript (${text.length} chars)",
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    TextButton(onClick = onDismiss) { Text("Close") }
+                }
+                Text(
+                    text = text,
+                    style = MaterialTheme.typography.bodyLarge,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .testTag("fullTranscriptText")
+                        .verticalScroll(rememberScrollState()),
+                )
+                FilledTonalButton(onClick = onCopy, modifier = Modifier.fillMaxWidth()) {
+                    Text("Copy")
+                }
+            }
+        }
+    }
 }
 
 @Composable
@@ -308,3 +411,53 @@ private fun androidx.compose.animation.core.InfiniteTransition.animateFloat(
     animationSpec = infiniteRepeatable(tween(duration, easing = LinearEasing), RepeatMode.Reverse),
     label = "bar",
 )
+
+/**
+ * Draws an always-visible vertical scrollbar (track + thumb) on the right edge,
+ * only while [scrollState] actually has overflow ([ScrollState.maxValue] > 0).
+ * The thumb's length reflects how much of the content fits the viewport, and its
+ * position tracks the scroll offset — parked at the bottom when auto-scrolled to
+ * the end, signalling the tail is in view.
+ */
+private fun Modifier.visibleScrollbar(
+    scrollState: androidx.compose.foundation.ScrollState,
+    trackColor: androidx.compose.ui.graphics.Color,
+    thumbColor: androidx.compose.ui.graphics.Color,
+): Modifier = drawWithCache {
+    val trackThickness = 4.dp.toPx()
+    val minThumbLength = 24.dp.toPx()
+    val cornerRadius = CornerRadius(trackThickness / 2)
+    onDrawWithContent {
+        drawContent()
+        val maxValue = scrollState.maxValue
+        if (maxValue > 0) {
+            val trackTop = 0f
+            val trackBottom = size.height
+            val trackLength = trackBottom - trackTop
+            val x = size.width - trackThickness
+
+            // Thumb length is proportional to what's visible: viewport / content.
+            val contentLength = trackLength + maxValue
+            var thumbLength = trackLength * trackLength / contentLength
+            if (thumbLength < minThumbLength) thumbLength = minThumbLength
+
+            val travel = (trackLength - thumbLength).coerceAtLeast(0f)
+            val thumbTop = trackTop + travel * scrollState.value / maxValue
+
+            // Track.
+            drawRoundRect(
+                color = trackColor,
+                topLeft = Offset(x, trackTop),
+                size = Size(trackThickness, trackLength),
+                cornerRadius = cornerRadius,
+            )
+            // Thumb.
+            drawRoundRect(
+                color = thumbColor,
+                topLeft = Offset(x, thumbTop),
+                size = Size(trackThickness, thumbLength),
+                cornerRadius = cornerRadius,
+            )
+        }
+    }
+}
