@@ -202,26 +202,59 @@ Expect `cert found in release APK: True`.
 
 ### Bump the version (each release)
 
-In `android/app/build.gradle.kts`, bump `defaultConfig.versionName` (e.g. `1.0.0`
-→ `1.1.0`), then rebuild. Keep the same keystore so updates install in place.
+In `android/app/build.gradle.kts`, bump **both** `versionCode` and `versionName`
+(e.g. `1.0.2` → `1.0.3`), then rebuild. Keep the same keystore so updates install
+in place.
+
+> `versionCode` must increase on every release — Android uses it to order upgrades,
+> so a rebuild at the same code will refuse to install over an existing app. Only
+> `versionName` is user-visible.
+
+### Write the release notes
+
+Add a section for the new version at the top of `CHANGELOG.md`, newest first. That
+file is the source of truth; the GitHub release body is copied from it, so never
+hand-edit a release body on github.com. Don't repeat the requirements — they live
+once in the [README](../README.md#requirements) and haven't changed since v1.0.0.
 
 ### Commit, tag, and publish
 
+Tag **after** merging to `main`, never on a side branch. v1.0.1 shipped without
+the transcript scrollbar because the tag was cut on a branch that later merged into
+`main`; tagging the merge commit is what guarantees the tag matches the APK.
+
 ```bash
 cd android/..   # repo root
-git add android/app/build.gradle.kts android/.gitignore
-git commit -m "Sign release APK with stable self-signed key"
-git tag v1.1.0 && git push origin development --tags
+
+# 1. Merge the work into main first, and confirm main is what you built from.
+git checkout main && git merge development
+
+# 2. Commit the version bump and the CHANGELOG section.
+git add android/app/build.gradle.kts CHANGELOG.md
+git commit -m "Bump to v1.0.3 (patch: <short summary>)"
+
+# 3. Tag the merge/bump commit, then push both.
+git tag -a v1.0.3 -m "v1.0.3: <one-line summary>"
+git push origin main && git push origin v1.0.3
 ```
 
-Then upload the APK to the Release (web UI):
-1. Go to `https://github.com/<you>/kalaam-scribe/releases/new`.
-2. Choose the tag (`v1.1.0`).
-3. Drag in `android/app/build/outputs/apk/release/app-release.apk`.
-4. Publish.
+Then publish, extracting the matching section as the body:
 
-> Keep `versionCode` monotonic across releases too (Android uses it for upgrade
-> ordering); only `versionName` is user-visible.
+```bash
+# Extract the v1.0.3 section of CHANGELOG.md into a temp file, then:
+gh release create v1.0.3 android/app/build/outputs/apk/release/app-release.apk \
+  --title "v1.0.3" --notes-file /tmp/v1.0.3-notes.md --latest
+```
+
+To extract the section (from the `## v1.0.3` heading up to the next `## `):
+
+```bash
+awk '/^## v1\.0\.3$/{f=1} f&&/^## /&&!/^## v1\.0\.3$/{exit} f' CHANGELOG.md \
+  | sed -e '1d' -e '/./,$!d' -e 's/^### /## /' > /tmp/v1.0.3-notes.md
+```
+
+> Never commit the APK or the keystore — `android/.gitignore` excludes both, and
+> the APK is a release *asset*, not a tracked file.
 
 ---
 

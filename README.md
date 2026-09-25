@@ -42,6 +42,14 @@ The app is driven by ONNX ASR engines: **sherpa-onnx Whisper** for English / mul
 
 ## Getting Started
 
+### Install the app
+
+Grab the signed APK from the [latest release](../../releases/latest) and open it on
+your phone, allowing "Install from unknown sources" when prompted. The APK is
+self-signed, so Android shows an unknown-publisher warning — that's expected.
+Releases install over each other in place; see the [changelog](CHANGELOG.md) for
+what's in each version.
+
 ### Build the app
 
 First create `android/local.properties` with your Android SDK path (this file is gitignored):
