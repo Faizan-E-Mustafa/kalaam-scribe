@@ -154,6 +154,15 @@ Sources:
 - Jetpack Compose (Material 3), AndroidX, Kotlin coroutines
 - `kotlinx-coroutines-test` + JUnit (unit tests)
 
+## Open Tasks
+
+Not started yet:
+
+- **Dictate from the keyboard** — insert the transcript directly into the
+  focused field instead of the clipboard.
+- **Save transcripts and clips** — keep the transcript and the recording when
+  the user asks for it.
+
 ## Documentation
 
 | Doc | Description |
